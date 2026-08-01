@@ -11,7 +11,7 @@ vm_network_bridge = "vmbr0"
 # ssh_public_key = "ssh-ed25519 AAAA... user@example.com"
 github_username = "sota2501"
 
-network_gateway = "192.168.1.1"
+network_gateway = "192.168.11.1"
 
 control_plane_nodes = {
   "cp-1" = {
