@@ -1,0 +1,9 @@
+---
+- name: ArgoCD をインストールし、GitOps 管理へ移行する
+  hosts: control_plane
+  become: true
+  tasks:
+    - name: argocd_bootstrap ロールを実行
+      ansible.builtin.include_role:
+        name: argocd_bootstrap
+      when: inventory_hostname == kubeadm_init_host

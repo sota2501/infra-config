@@ -1,0 +1,14 @@
+*.swp
+.DS_Store
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+crash.log
+crash.*.log
+
+# Ansible
+ansible/*.retry

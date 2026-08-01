@@ -1,0 +1,18 @@
+---
+# クラスタ構築フル手順のエントリポイント。
+# 個別ステップだけ実行したい場合は各 NN-*.yml を直接指定する。
+
+- name: 01 - OS/containerd/kubernetesパッケージの前提セットアップ
+  ansible.builtin.import_playbook: 01-prereqs.yml
+
+- name: 02 - kubeadm init(control-plane)
+  ansible.builtin.import_playbook: 02-kubeadm-init.yml
+
+- name: 03 - kubeadm join(workers)
+  ansible.builtin.import_playbook: 03-kubeadm-join.yml
+
+- name: 04 - CNI(Calico)インストール
+  ansible.builtin.import_playbook: 04-cni.yml
+
+- name: 05 - ArgoCD bootstrap
+  ansible.builtin.import_playbook: 05-argocd-bootstrap.yml

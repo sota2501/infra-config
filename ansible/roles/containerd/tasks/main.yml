@@ -1,0 +1,36 @@
+---
+- name: Docker apt GPG key を追加(containerd.io パッケージ提供元)
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: containerd.io apt リポジトリを追加
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: containerd をインストール
+  ansible.builtin.apt:
+    name: containerd.io
+    state: present
+    update_cache: true
+
+- name: containerd のデフォルト設定を生成
+  ansible.builtin.command: containerd config default
+  register: containerd_default_config
+  changed_when: false
+
+- name: SystemdCgroup を有効化した containerd 設定を配置
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: "{{ containerd_default_config.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}"
+    mode: "0644"
+  notify: restart containerd
+
+- name: containerd を起動・有効化
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true

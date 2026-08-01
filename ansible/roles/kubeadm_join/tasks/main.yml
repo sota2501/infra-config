@@ -1,0 +1,14 @@
+---
+# kubeadm_init ロール実行時に control-plane ホストで set_fact(cacheable) された
+# kubeadm_join_command を使い、worker を join させる。
+# playbooks/02-kubeadm-init.yml -> 03-kubeadm-join.yml の順で実行する前提。
+
+- name: kubeadm join が実行済みか確認
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+
+- name: join コマンドを実行
+  ansible.builtin.command: "{{ hostvars[kubeadm_init_host].kubeadm_join_command }}"
+  when: not kubelet_conf.stat.exists
+  changed_when: true

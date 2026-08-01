@@ -1,0 +1,9 @@
+---
+- name: Calico(CNI)をインストール
+  hosts: control_plane
+  become: true
+  tasks:
+    - name: cni_calico ロールを実行
+      ansible.builtin.include_role:
+        name: cni_calico
+      when: inventory_hostname == kubeadm_init_host

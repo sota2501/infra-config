@@ -1,0 +1,35 @@
+---
+- name: Kubernetes apt GPG key を追加
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key"
+    dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+    mode: "0644"
+
+- name: Kubernetes apt リポジトリを追加
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /"
+    state: present
+    filename: kubernetes
+
+- name: kubelet / kubeadm / kubectl をインストール
+  ansible.builtin.apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+    update_cache: true
+
+- name: kubelet / kubeadm / kubectl を apt upgrade 対象から除外(意図しないバージョン変更を防止)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: kubelet を有効化
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true

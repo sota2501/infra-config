@@ -1,0 +1,6 @@
+---
+- name: worker ノードを kubeadm join でクラスタに参加させる
+  hosts: workers
+  become: true
+  roles:
+    - kubeadm_join

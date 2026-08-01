@@ -1,0 +1,28 @@
+---
+# k8s-manifests リポジトリ(GitOps用、別リポジトリ)の bootstrap/README.md の手順
+# (ArgoCD インストール + root Application の apply)を自動化する。
+# control-plane ホストで実行する想定。
+
+- name: argocd namespace を作成
+  kubernetes.core.k8s:
+    name: argocd
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+
+- name: ArgoCD をインストール
+  kubernetes.core.k8s:
+    state: present
+    namespace: argocd
+    src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+
+- name: root Application (app-of-apps) を apply
+  kubernetes.core.k8s:
+    state: present
+    namespace: argocd
+    # k8s-manifests リポジトリ(GitOps専用)の apps/root-app.yaml をそのまま参照する。
+    # ローカルにチェックアウトを持たないので、raw.githubusercontent.com 経由で直接取得する。
+    src: "https://raw.githubusercontent.com/{{ gitops_repo }}/{{ gitops_repo_branch }}/apps/root-app.yaml"
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"

@@ -1,0 +1,18 @@
+---
+# control-plane ホストで kubectl を使い Calico(Tigera operator)を適用する。
+
+- name: Tigera operator を適用
+  kubernetes.core.k8s:
+    state: present
+    src: https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+
+- name: Calico custom resources を適用
+  kubernetes.core.k8s:
+    state: present
+    src: https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+  # TODO: custom-resources.yaml のデフォルト CIDR (192.168.0.0/16) は
+  # group_vars/all.yml の pod_network_cidr と食い違うため、実運用前に
+  # 取得したマニフェストを k8s-manifests リポジトリの infrastructure/ 配下に
+  # 取り込んで CIDR を合わせ、以後は GitOps(ArgoCD)管理に寄せることを検討する。

@@ -1,0 +1,11 @@
+---
+- name: control-plane を kubeadm init で初期化
+  hosts: control_plane
+  become: true
+  # 現状は単一 control-plane 構成(kubeadm_init_host)のみを対象とする。
+  # HA 化する場合はこのフィルタと kubeadm_init ロールを見直すこと。
+  tasks:
+    - name: kubeadm_init ロールを実行
+      ansible.builtin.include_role:
+        name: kubeadm_init
+      when: inventory_hostname == kubeadm_init_host

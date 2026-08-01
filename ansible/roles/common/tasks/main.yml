@@ -1,0 +1,58 @@
+---
+- name: "control_plane_hostname を全ノードの /etc/hosts に登録"
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: "\\s{{ control_plane_hostname }}$"
+    line: "{{ hostvars[kubeadm_init_host].ansible_host }} {{ control_plane_hostname }}"
+    state: present
+  # control-plane の実IPが変わった(引っ越し等)場合は、inventory の
+  # ansible_host を更新してこのタスクを再実行すれば全ノードの解決先が追随する。
+  # kubeadm 証明書の SAN は control_plane_hostname(固定値)なので再発行は不要。
+
+- name: swap を無効化(kubelet の前提条件)
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+  changed_when: true
+
+- name: /etc/fstab の swap エントリをコメントアウト
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+
+- name: 起動時にロードするカーネルモジュールを設定
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    mode: "0644"
+
+- name: overlay / br_netfilter モジュールをロード
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: k8s 用 sysctl パラメータを設定
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    reload: true
+  loop:
+    - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
+    - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+    - { name: net.ipv4.ip_forward, value: "1" }
+
+- name: 必要な apt パッケージをインストール
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true

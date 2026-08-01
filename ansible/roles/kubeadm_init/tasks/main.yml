@@ -1,0 +1,47 @@
+---
+# このロールは group_vars/all.yml の kubeadm_init_host に指定したホストでのみ実行する想定
+# (playbooks/03-kubeadm-init.yml 側で対象を絞り込む)。
+
+- name: kubeadm init が実行済みか確認
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeadm_admin_conf
+
+- name: kubeadm init を実行
+  ansible.builtin.command: >
+    kubeadm init
+    --control-plane-endpoint={{ control_plane_endpoint }}
+    --pod-network-cidr={{ pod_network_cidr }}
+    --upload-certs
+  when: not kubeadm_admin_conf.stat.exists
+  register: kubeadm_init_result
+  changed_when: true
+
+- name: "{{ ansible_user }} 用に kubeconfig を配置"
+  block:
+    - name: ~/.kube ディレクトリを作成
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0700"
+
+    - name: admin.conf を ~/.kube/config へコピー
+      ansible.builtin.copy:
+        remote_src: true
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+
+- name: worker join 用のトークン付きコマンドを生成
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: kubeadm_join_command
+  changed_when: false
+
+- name: join コマンドを他ホストで使えるように fact として保存
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ kubeadm_join_command.stdout }}"
+    cacheable: true
