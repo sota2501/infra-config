@@ -5,8 +5,19 @@ TEMPLATE_VMID=9000
 CLOUDINIT_IMAGE_TARGET_VOLUME=local-lvm
 TEMPLATE_BOOT_IMAGE_TARGET_VOLUME=local-lvm
 
+# re-running this script to rebuild the template requires removing the old one first
+qm destroy $TEMPLATE_VMID --purge 2>/dev/null || true
+
 # download the image(ubuntu 24.04 LTS)
 wget https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+
+# bake qemu-guest-agent into the image so it's already running on first boot.
+# without this, Terraform's `agent { enabled = true }` waits forever for the
+# agent to respond and `terraform apply` hangs on "Still creating...".
+# requires: apt-get install -y libguestfs-tools
+virt-customize -a noble-server-cloudimg-amd64.img \
+  --install qemu-guest-agent \
+  --run-command 'systemctl enable qemu-guest-agent'
 
 # create a new VM and attach Network Adaptor
 qm create $TEMPLATE_VMID --cores 2 --memory 4096 --net0 virtio,bridge=vmbr0 --name iris-k8s-template
