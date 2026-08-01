@@ -42,8 +42,11 @@ resource "proxmox_virtual_environment_vm" "this" {
       }
     }
 
-    dns {
-      servers = var.dns_servers
+    dynamic "dns" {
+      for_each = var.dns_servers == null ? [] : [var.dns_servers]
+      content {
+        servers = dns.value
+      }
     }
 
     user_account {
