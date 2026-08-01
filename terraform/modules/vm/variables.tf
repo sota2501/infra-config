@@ -43,7 +43,9 @@ variable "gateway" {
 }
 
 variable "dns_servers" {
-  type = list(string)
+  description = "未指定(null)の場合、Proxmox VE ノードの DNS 設定がそのまま使われる"
+  type        = list(string)
+  default     = null
 }
 
 variable "ssh_public_keys" {

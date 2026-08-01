@@ -89,7 +89,7 @@ variable "network_gateway" {
 }
 
 variable "network_dns_servers" {
-  description = "VM に設定する DNS サーバー"
+  description = "VM に設定する DNS サーバー。未指定(null)の場合、Proxmox VE ノードの DNS 設定がそのまま使われる"
   type        = list(string)
-  default     = ["1.1.1.1", "8.8.8.8"]
+  default     = null
 }
