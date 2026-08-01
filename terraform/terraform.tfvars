@@ -14,8 +14,8 @@ github_username = "sota2501"
 network_gateway = "192.168.11.1"
 
 control_plane_nodes = {
-  "cp-1" = {
-    vm_id     = 2001
+  "iris-k8s-cp-1" = {
+    vm_id     = 1001
     cores     = 2
     memory    = 2048
     disk_gb   = 30
@@ -25,8 +25,8 @@ control_plane_nodes = {
 }
 
 worker_nodes = {
-  "worker-1" = {
-    vm_id     = 2101
+  "iris-k8s-wk-1" = {
+    vm_id     = 1101
     cores     = 2
     memory    = 2048
     disk_gb   = 30
