@@ -24,8 +24,9 @@ ansible/      OSセットアップ・kubeadmクラスタ構築・ArgoCD bootstra
 
 ```sh
 cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# terraform.tfvars を実環境に合わせて編集
+cp secret.auto.tfvars.example secret.auto.tfvars
+# secret.auto.tfvars に Proxmox 接続情報(秘密情報)を記載
+# terraform.tfvars(クラスタ構成)は Git 管理下にあるので必要に応じて編集
 terraform init && terraform apply
 
 cd ../ansible

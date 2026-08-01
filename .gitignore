@@ -5,7 +5,8 @@
 terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
-terraform/terraform.tfvars
+# terraform.tfvars は非秘密のクラスタ構成情報として Git 管理する。
+# 秘密情報(APIトークン等)は *.auto.tfvars (例: secret.auto.tfvars) に分離し、そちらのみ除外する。
 terraform/*.auto.tfvars
 crash.log
 crash.*.log

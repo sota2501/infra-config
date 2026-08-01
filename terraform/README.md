@@ -11,14 +11,21 @@ Proxmox VE 上に k8s クラスタ用の VM(control-plane / worker)を作成す�
 
 ## 使い方(想定)
 
+`terraform.tfvars`(クラスタ構成、非秘密情報)は Git 管理下にあるので既存の値を編集する。
+秘密情報(Proxmox接続情報)だけ `secret.auto.tfvars`(Git管理外)に分離しているので、
+初回のみ以下でコピーして値を埋める。
+
 ```sh
-cp terraform.tfvars.example terraform.tfvars
-# terraform.tfvars を実環境に合わせて編集
+cp secret.auto.tfvars.example secret.auto.tfvars
+# secret.auto.tfvars に実際の Proxmox 接続情報を記載
 
 terraform init
 terraform plan
 terraform apply
 ```
+
+`terraform.tfvars` と `*.auto.tfvars`(`secret.auto.tfvars`)はどちらも `-var-file` 指定なしで
+自動読み込みされるため、コマンド実行時にファイル名を指定する必要はない。
 
 `terraform output -json` で得られる IP アドレスを Ansible の inventory (`../ansible/inventory/home/hosts.yml`)
 に反映してから Ansible フェーズに進む。TODO: 反映を自動化するスクリプトを用意する。
@@ -26,12 +33,13 @@ terraform apply
 ## 構成
 
 ```
-main.tf               provider 設定
-variables.tf           入力変数(接続情報・ノード定義)
-vms.tf                 control-plane / worker VM の定義(modules/vm を for_each で呼び出す)
-outputs.tf             生成された VM の IP アドレス一覧
-modules/vm/             VM 1台分の共通 clone/cloud-init ロジック
-terraform.tfvars.example  変数のサンプル(実値は terraform.tfvars に。Git 管理外)
+main.tf                     provider 設定
+variables.tf                 入力変数(接続情報・ノード定義)
+vms.tf                       control-plane / worker VM の定義(modules/vm を for_each で呼び出す)
+outputs.tf                   生成された VM の IP アドレス一覧
+modules/vm/                   VM 1台分の共通 clone/cloud-init ロジック
+terraform.tfvars              クラスタ構成(非秘密情報)。Git 管理下
+secret.auto.tfvars.example    秘密情報のサンプル(実値は secret.auto.tfvars に。Git 管理外)
 ```
 
 ## 現状
