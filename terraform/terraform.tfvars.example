@@ -4,7 +4,6 @@
 proxmox_endpoint     = "https://proxmox.local:8006/"
 proxmox_api_token    = "terraform@pve!terraform-token=00000000-0000-0000-0000-000000000000"
 proxmox_tls_insecure = true
-proxmox_node         = "pve"
 
 vm_template_id    = 9000 # 事前に用意した cloud-init 対応テンプレートの VM ID
 vm_datastore_id   = "local-lvm"
@@ -19,28 +18,30 @@ network_gateway = "192.168.1.1"
 
 control_plane_nodes = {
   "cp-1" = {
-    vm_id   = 8101
-    cores   = 2
-    memory  = 4096
-    disk_gb = 40
-    ip_cidr = "192.168.1.11/24"
-    # node_name = "pve2" # 複数 Proxmox ノードに分散する場合のみ、proxmox_node を上書き
+    vm_id     = 8101
+    cores     = 2
+    memory    = 4096
+    disk_gb   = 40
+    ip_cidr   = "192.168.1.11/24"
+    node_name = "pve"
   }
 }
 
 worker_nodes = {
   "worker-1" = {
-    vm_id   = 8111
-    cores   = 4
-    memory  = 8192
-    disk_gb = 80
-    ip_cidr = "192.168.1.21/24"
+    vm_id     = 8111
+    cores     = 4
+    memory    = 8192
+    disk_gb   = 80
+    ip_cidr   = "192.168.1.21/24"
+    node_name = "pve"
   }
   "worker-2" = {
-    vm_id   = 8112
-    cores   = 4
-    memory  = 8192
-    disk_gb = 80
-    ip_cidr = "192.168.1.22/24"
+    vm_id     = 8112
+    cores     = 4
+    memory    = 8192
+    disk_gb   = 80
+    ip_cidr   = "192.168.1.22/24"
+    node_name = "pve"
   }
 }

@@ -24,11 +24,6 @@ variable "proxmox_ssh_username" {
   default     = "root"
 }
 
-variable "proxmox_node" {
-  description = "VM を配置する Proxmox ノード名のデフォルト。ノードごとに control_plane_nodes/worker_nodes の node_name で上書き可能"
-  type        = string
-}
-
 # --- VM テンプレート ---
 
 variable "vm_template_id" {
@@ -65,43 +60,45 @@ variable "github_username" {
 # TODO: 台数・スペック・IPレンジは実環境に合わせて terraform.tfvars で上書きする。
 
 variable "control_plane_nodes" {
-  description = "control-plane ノードの定義。node_name を省略すると proxmox_node が使われる(複数 Proxmox ノードに分散させたい場合のみ指定)"
+  description = "control-plane ノードの定義。node_name には VM を配置する Proxmox ノード名を明示的に指定する"
   type = map(object({
     vm_id     = number
     cores     = number
     memory    = number # MiB
     disk_gb   = number
     ip_cidr   = string # 例: 192.168.1.11/24
-    node_name = optional(string)
+    node_name = string
   }))
   default = {
     "cp-1" = {
-      vm_id   = 8101
-      cores   = 2
-      memory  = 4096
-      disk_gb = 40
-      ip_cidr = "192.168.1.11/24"
+      vm_id     = 8101
+      cores     = 2
+      memory    = 4096
+      disk_gb   = 40
+      ip_cidr   = "192.168.1.11/24"
+      node_name = "pve"
     }
   }
 }
 
 variable "worker_nodes" {
-  description = "worker ノードの定義。node_name を省略すると proxmox_node が使われる(複数 Proxmox ノードに分散させたい場合のみ指定)"
+  description = "worker ノードの定義。node_name には VM を配置する Proxmox ノード名を明示的に指定する"
   type = map(object({
     vm_id     = number
     cores     = number
     memory    = number # MiB
     disk_gb   = number
     ip_cidr   = string
-    node_name = optional(string)
+    node_name = string
   }))
   default = {
     "worker-1" = {
-      vm_id   = 8111
-      cores   = 4
-      memory  = 8192
-      disk_gb = 80
-      ip_cidr = "192.168.1.21/24"
+      vm_id     = 8111
+      cores     = 4
+      memory    = 8192
+      disk_gb   = 80
+      ip_cidr   = "192.168.1.21/24"
+      node_name = "pve"
     }
   }
 }

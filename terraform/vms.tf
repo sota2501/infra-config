@@ -4,7 +4,7 @@ module "control_plane" {
   for_each = var.control_plane_nodes
 
   name              = each.key
-  node_name         = coalesce(each.value.node_name, var.proxmox_node)
+  node_name         = each.value.node_name
   vm_id             = each.value.vm_id
   clone_template_id = var.vm_template_id
   cores             = each.value.cores
@@ -24,7 +24,7 @@ module "worker" {
   for_each = var.worker_nodes
 
   name              = each.key
-  node_name         = coalesce(each.value.node_name, var.proxmox_node)
+  node_name         = each.value.node_name
   vm_id             = each.value.vm_id
   clone_template_id = var.vm_template_id
   cores             = each.value.cores
