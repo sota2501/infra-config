@@ -69,16 +69,6 @@ variable "control_plane_nodes" {
     ip_cidr   = string # 例: 192.168.1.11/24
     node_name = string
   }))
-  default = {
-    "cp-1" = {
-      vm_id     = 8101
-      cores     = 2
-      memory    = 4096
-      disk_gb   = 40
-      ip_cidr   = "192.168.1.11/24"
-      node_name = "pve"
-    }
-  }
 }
 
 variable "worker_nodes" {
@@ -91,16 +81,6 @@ variable "worker_nodes" {
     ip_cidr   = string
     node_name = string
   }))
-  default = {
-    "worker-1" = {
-      vm_id     = 8111
-      cores     = 4
-      memory    = 8192
-      disk_gb   = 80
-      ip_cidr   = "192.168.1.21/24"
-      node_name = "pve"
-    }
-  }
 }
 
 variable "network_gateway" {
