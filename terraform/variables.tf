@@ -52,7 +52,7 @@ variable "ssh_public_key" {
 variable "vm_username" {
   description = "cloud-init で各 VM に作成するユーザー名"
   type        = string
-  default     = "ubuntu"
+  default     = "cloudinit"
 }
 
 variable "github_username" {
