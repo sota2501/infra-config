@@ -16,6 +16,7 @@ module "control_plane" {
   gateway           = var.network_gateway
   dns_servers       = var.network_dns_servers
   ssh_public_keys   = local.ssh_public_keys
+  username          = var.vm_username
 }
 
 module "worker" {
@@ -36,4 +37,5 @@ module "worker" {
   gateway           = var.network_gateway
   dns_servers       = var.network_dns_servers
   ssh_public_keys   = local.ssh_public_keys
+  username          = var.vm_username
 }

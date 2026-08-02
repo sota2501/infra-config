@@ -49,6 +49,12 @@ variable "ssh_public_key" {
   default     = null
 }
 
+variable "vm_username" {
+  description = "cloud-init で各 VM に作成するユーザー名"
+  type        = string
+  default     = "ubuntu"
+}
+
 variable "github_username" {
   description = "ssh_public_key が未指定の場合に、公開鍵の取得元として使う GitHub ユーザー名(https://github.com/<user>.keys から全公開鍵を取得する)"
   type        = string

@@ -48,6 +48,10 @@ variable "dns_servers" {
   default     = null
 }
 
+variable "username" {
+  type = string
+}
+
 variable "ssh_public_keys" {
   type = list(string)
 }
