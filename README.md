@@ -30,7 +30,12 @@ cp secret.auto.tfvars.example secret.auto.tfvars
 terraform init && terraform apply
 
 cd ..
-# ansible/inventory/home/hosts.yml の ansible_host を terraform output の実IPに更新
+
+# terraform output (control_plane_ips / worker_ips) を見て、
+# ansible/inventory/home/hosts.yml の ansible_host を実IPに手動で更新する
+# (自動反映の仕組みはまだ無い。terraform/outputs.tf の TODO 参照)
+
+# ansible/requirements.yml に列挙された Galaxy コレクション(IPとは無関係)をインストール
 ansible-galaxy collection install -r ansible/requirements.yml
 
 # k8s-manifests は private リポジトリのため、読み取り用 GitHub PAT を
