@@ -46,13 +46,21 @@ cp inventory/home/group_vars/all/secrets.yml.example inventory/home/group_vars/a
 ansible-playbook playbooks/site.yml
 ```
 
-## VSCode で開く場合
+## 既知の制限: VSCode拡張機能のAnsible警告は誤検知することがある
 
-`ansible.cfg`は(terraformと同様)`ansible/`配下にあり、CLIは`ansible/`に`cd`して実行する前提。
-VSCodeのAnsible拡張機能はワークスペースフォルダを作業ディレクトリにしてansible-lintを実行するため、
-リポジトリルートをそのままフォルダとして開くと`ansible.cfg`を見つけられず誤検知が出る。
-`infra-config.code-workspace`をワークスペースとして開けば`ansible/`が独立フォルダとして
-登録され、正しく検出される(リポジトリ構成自体はCLIの都合を優先し、変更していない)。
+`ansible.cfg`は(terraformと同様)`ansible/`配下にあり、CLIは`ansible/`に`cd`して実行する前提
+(このリポジトリの構成そのもの)。VSCodeのAnsible拡張機能(非コンテナ/Execution Environment
+モード時)はリポジトリルートを作業ディレクトリにして`ansible-lint`を実行するため、
+`ansible.cfg`の`roles_path`を読めず`the role 'xxx' was not found`のような誤検知が
+Problemsパネルに出ることがある。これを直接解決する拡張機能側の設定項目は無い
+(調査済み: `Execution Environment`関連の設定はコンテナ実行用で今回の件とは無関係、
+CLI引数だけで`roles_path`を上書きする手段もansible-core自体に存在しない)。
+
+**実際の正しさはCLIで判断すること**:
+```sh
+cd ansible && ansible-lint   # production profile 全通過が正
+```
+Problemsパネルの`role not found`等はこの既知の制限による誤検知の可能性が高い。
 
 ## 現状
 
