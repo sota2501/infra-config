@@ -29,16 +29,18 @@ cp secret.auto.tfvars.example secret.auto.tfvars
 # terraform.tfvars(クラスタ構成)は Git 管理下にあるので必要に応じて編集
 terraform init && terraform apply
 
-cd ../ansible
-# inventory/home/hosts.yml の ansible_host を terraform output の実IPに更新
-ansible-galaxy collection install -r requirements.yml
+cd ..
+# ansible/inventory/home/hosts.yml の ansible_host を terraform output の実IPに更新
+ansible-galaxy collection install -r ansible/requirements.yml
 
 # k8s-manifests は private リポジトリのため、読み取り用 GitHub PAT を
 # group_vars/all/secrets.yml (git 管理外) に設定する
-cp inventory/home/group_vars/all/secrets.yml.example inventory/home/group_vars/all/secrets.yml
+cp ansible/inventory/home/group_vars/all/secrets.yml.example ansible/inventory/home/group_vars/all/secrets.yml
 # secrets.yml の gitops_repo_token を実際の PAT に書き換える
 
-ansible-playbook playbooks/site.yml
+# ansible.cfg はリポジトリルートに置いている(ansible/ 配下に複製しない)ので、
+# ansible-playbook 等は必ずリポジトリルートから実行すること。
+ansible-playbook ansible/playbooks/site.yml
 ```
 
 ## 現状
