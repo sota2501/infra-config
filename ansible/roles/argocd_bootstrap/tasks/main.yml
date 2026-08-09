@@ -18,11 +18,38 @@
     src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
     kubeconfig: "/home/{{ ansible_user }}/.kube/config"
 
+- name: "k8s-manifests(private repo) の repository 認証情報を ArgoCD に登録"
+  # ArgoCD 自身が以降継続的に private リポジトリを sync するために必要。
+  # (これがないと初回 apply は通っても、2回目以降の自動 sync が全て失敗する)
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ gitops_repo | regex_replace('/', '-') }}-repo"
+        namespace: argocd
+        labels:
+          argocd.argoproj.io/secret-type: repository
+      type: Opaque
+      stringData:
+        type: git
+        url: "https://github.com/{{ gitops_repo }}"
+        username: x-access-token
+        password: "{{ gitops_repo_token }}"
+
+- name: "root-app.yaml を private repo から認証付きで取得"
+  ansible.builtin.uri:
+    url: "https://raw.githubusercontent.com/{{ gitops_repo }}/{{ gitops_repo_branch }}/apps/root-app.yaml"
+    headers:
+      Authorization: "token {{ gitops_repo_token }}"
+    return_content: true
+  register: root_app_manifest
+
 - name: root Application (app-of-apps) を apply
   kubernetes.core.k8s:
     state: present
     namespace: argocd
-    # k8s-manifests リポジトリ(GitOps専用)の apps/root-app.yaml をそのまま参照する。
-    # ローカルにチェックアウトを持たないので、raw.githubusercontent.com 経由で直接取得する。
-    src: "https://raw.githubusercontent.com/{{ gitops_repo }}/{{ gitops_repo_branch }}/apps/root-app.yaml"
+    definition: "{{ root_app_manifest.content }}"
     kubeconfig: "/home/{{ ansible_user }}/.kube/config"

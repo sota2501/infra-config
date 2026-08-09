@@ -32,7 +32,13 @@ terraform init && terraform apply
 cd ../ansible
 # inventory/home/hosts.yml の ansible_host を terraform output の実IPに更新
 ansible-galaxy collection install -r requirements.yml
-ansible-playbook playbooks/site.yml
+
+# k8s-manifests は private リポジトリのため、読み取り用 GitHub PAT を
+# group_vars/all/vault.yml に設定して ansible-vault で暗号化しておく
+# (詳細は group_vars/all/vault.yml のコメント参照)。
+ansible-vault encrypt inventory/home/group_vars/all/vault.yml
+
+ansible-playbook playbooks/site.yml --ask-vault-pass
 ```
 
 ## 現状

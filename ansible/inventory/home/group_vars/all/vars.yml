@@ -1,24 +1,30 @@
 ---
 # クラスタ全体で共有する設定値。
 
-kubernetes_version: "1.30"
+# NOTE: pkgs.k8s.io は core:/stable:/v{{ kubernetes_version }}/ のようにマイナーバージョンごとに
+# 個別の apt チャンネルを持つ。適用前に一度 `curl -I https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release`
+# 等でチャンネルが実在する(まだ EOL になっていない)ことを確認すること。
+kubernetes_version: "1.36"
 pod_network_cidr: "10.244.0.0/16"
 
 # kubeadm init を実行する control-plane ノードのホスト名(control_plane グループの先頭を想定)。
 # 複数 control-plane(HA)構成にする場合は kubeadm_init ロール側の実装を合わせて拡張すること。
-kubeadm_init_host: "cp-1"
+kubeadm_init_host: "iris-k8s-cp-1"
 
 # control-plane の呼び名。IP ではなく固定のホスト名にしておくことで、
 # 将来 control-plane の実IPが変わって(引っ越し等)も kubeadm が発行した
 # APIサーバ証明書(SANにこの値が焼き込まれる)を再発行せずに済む。
 # 名前解決は DNS ではなく roles/common の /etc/hosts 管理タスクで行う
 # (クラスタ内の全ノードの /etc/hosts に control_plane_hostname -> 実IP を追記する)。
-control_plane_hostname: "k8s-cp.home.arpa"
+# .internal は RFC 9476 で予約された特殊用途ドメインなので実在ドメインと衝突しない。
+control_plane_hostname: "k8s-cp.internal"
 control_plane_endpoint: "{{ control_plane_hostname }}:6443"
 
 # TODO: control-plane を複数台にする場合は kube-vip 等での VIP 構成を検討する。
 
 # GitOps(ArgoCD)側のリポジトリ。infra-config(このリポジトリ)とは分離しているため、
 # argocd_bootstrap ロールはここから root Application を直接取得する。
+# private リポジトリのため、認証には gitops_repo_token (group_vars/all/vault.yml、
+# ansible-vault 暗号化)を使う。ArgoCD 自身の継続 sync 用リポジトリ認証にも同じトークンを使う。
 gitops_repo: "sota2501/k8s-manifests"
 gitops_repo_branch: "main"

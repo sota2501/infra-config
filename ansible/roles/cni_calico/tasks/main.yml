@@ -7,12 +7,18 @@
     src: https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
     kubeconfig: "/home/{{ ansible_user }}/.kube/config"
 
-- name: Calico custom resources を適用
+- name: Calico custom-resources.yaml を取得
+  ansible.builtin.uri:
+    url: https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
+    return_content: true
+  register: calico_custom_resources
+
+- name: Calico custom resources を pod_network_cidr に合わせて適用
   kubernetes.core.k8s:
     state: present
-    src: https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
+    # custom-resources.yaml のデフォルト CIDR (192.168.0.0/16) は kubeadm init に渡した
+    # pod_network_cidr と食い違うため、apply 前に書き換える。
+    definition: "{{ calico_custom_resources.content | regex_replace('192\\.168\\.0\\.0/16', pod_network_cidr) }}"
     kubeconfig: "/home/{{ ansible_user }}/.kube/config"
-  # TODO: custom-resources.yaml のデフォルト CIDR (192.168.0.0/16) は
-  # group_vars/all.yml の pod_network_cidr と食い違うため、実運用前に
-  # 取得したマニフェストを k8s-manifests リポジトリの infrastructure/ 配下に
-  # 取り込んで CIDR を合わせ、以後は GitOps(ArgoCD)管理に寄せることを検討する。
+  # TODO: 実運用前に、取得・書き換え後のマニフェストを k8s-manifests リポジトリの
+  # infrastructure/ 配下に取り込み、以後は GitOps(ArgoCD)管理に寄せることを検討する。
