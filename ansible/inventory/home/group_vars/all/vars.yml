@@ -24,7 +24,7 @@ control_plane_endpoint: "{{ control_plane_hostname }}:6443"
 
 # GitOps(ArgoCD)側のリポジトリ。infra-config(このリポジトリ)とは分離しているため、
 # argocd_bootstrap ロールはここから root Application を直接取得する。
-# private リポジトリのため、認証には gitops_repo_token (group_vars/all/vault.yml、
-# ansible-vault 暗号化)を使う。ArgoCD 自身の継続 sync 用リポジトリ認証にも同じトークンを使う。
+# private リポジトリのため、認証には gitops_repo_token (group_vars/all/secrets.yml、
+# git 管理外)を使う。ArgoCD 自身の継続 sync 用リポジトリ認証にも同じトークンを使う。
 gitops_repo: "sota2501/k8s-manifests"
 gitops_repo_branch: "main"

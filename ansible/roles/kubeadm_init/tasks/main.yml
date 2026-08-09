@@ -17,7 +17,7 @@
   register: kubeadm_init_result
   changed_when: true
 
-- name: "{{ ansible_user }} 用に kubeconfig を配置"
+- name: "kubeconfig を配置(対象ユーザー: {{ ansible_user }})"
   block:
     - name: ~/.kube ディレクトリを作成
       ansible.builtin.file:

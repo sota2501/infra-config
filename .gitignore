@@ -13,3 +13,5 @@ crash.*.log
 
 # Ansible
 ansible/*.retry
+# k8s-manifests(private repo) 読み取り用 GitHub PAT。secrets.yml.example をコピーして作成する。
+ansible/inventory/home/group_vars/all/secrets.yml

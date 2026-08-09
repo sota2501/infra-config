@@ -34,11 +34,11 @@ cd ../ansible
 ansible-galaxy collection install -r requirements.yml
 
 # k8s-manifests は private リポジトリのため、読み取り用 GitHub PAT を
-# group_vars/all/vault.yml に設定して ansible-vault で暗号化しておく
-# (詳細は group_vars/all/vault.yml のコメント参照)。
-ansible-vault encrypt inventory/home/group_vars/all/vault.yml
+# group_vars/all/secrets.yml (git 管理外) に設定する
+cp inventory/home/group_vars/all/secrets.yml.example inventory/home/group_vars/all/secrets.yml
+# secrets.yml の gitops_repo_token を実際の PAT に書き換える
 
-ansible-playbook playbooks/site.yml --ask-vault-pass
+ansible-playbook playbooks/site.yml
 ```
 
 ## 現状
