@@ -56,3 +56,12 @@
       - gnupg
     state: present
     update_cache: true
+
+- name: "Python kubernetes ライブラリをインストール(control-plane のみ)"
+  # cni_calico / argocd_bootstrap ロールが使う kubernetes.core.k8s モジュールは、
+  # 実行対象ホスト(= control-plane)側に Python の kubernetes ライブラリが
+  # 無いと "Failed to import the required Python library (kubernetes)" で失敗する。
+  ansible.builtin.apt:
+    name: python3-kubernetes
+    state: present
+  when: inventory_hostname == kubeadm_init_host
