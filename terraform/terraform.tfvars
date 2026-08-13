@@ -11,7 +11,7 @@ vm_network_bridge = "vmbr0"
 # ssh_public_key = "ssh-ed25519 AAAA... user@example.com"
 github_username = "sota2501"
 
-network_gateway = "192.168.11.1"
+network_gateway = "192.168.1.1"
 
 control_plane_nodes = {
   "iris-k8s-cp-1" = {
@@ -19,7 +19,7 @@ control_plane_nodes = {
     cores     = 2
     memory    = 2048
     disk_gb   = 30
-    ip_cidr   = "192.168.11.192/24"
+    ip_cidr   = "192.168.1.129/24"
     node_name = "fox"
   }
 }
@@ -30,7 +30,7 @@ worker_nodes = {
     cores     = 2
     memory    = 2048
     disk_gb   = 30
-    ip_cidr   = "192.168.11.208/24"
+    ip_cidr   = "192.168.1.144/24"
     node_name = "fox"
   }
 }
