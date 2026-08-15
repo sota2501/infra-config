@@ -9,6 +9,21 @@
   # ansible_host を更新してこのタスクを再実行すれば全ノードの解決先が追随する。
   # kubeadm 証明書の SAN は control_plane_hostname(固定値)なので再発行は不要。
 
+- name: "control_plane_hostname を cloud-init の /etc/hosts テンプレートにも登録"
+  # Ubuntu cloud image はデフォルトで manage_etc_hosts: true になっており、
+  # cloud-init の update_etc_hosts モジュールは毎回起動時に
+  # /etc/cloud/templates/hosts.debian.tmpl から /etc/hosts を再生成する
+  # (これにより上のタスクで追記した行が再起動の度に消え、kubectl 等が
+  # 名前解決に失敗する不具合が実機で発生した)。
+  # manage_etc_hosts を無効化するのではなく、cloud-init 自身が再生成の元にする
+  # テンプレート側に静的な行を加えることで、再生成後も内容を保持させる
+  # (cloud-init が生成する /etc/hosts のコメントで案内されている正規の対処法)。
+  ansible.builtin.lineinfile:
+    path: /etc/cloud/templates/hosts.debian.tmpl
+    regexp: "\\s{{ control_plane_hostname }}$"
+    line: "{{ hostvars[kubeadm_init_host].ansible_host }} {{ control_plane_hostname }}"
+    state: present
+
 - name: swap を無効化(kubelet の前提条件)
   ansible.builtin.command: swapoff -a
   when: ansible_swaptotal_mb > 0
