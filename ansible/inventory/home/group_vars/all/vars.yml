@@ -28,3 +28,12 @@ control_plane_endpoint: "{{ control_plane_hostname }}:6443"
 # git 管理外)を使う。ArgoCD 自身の継続 sync 用リポジトリ認証にも同じトークンを使う。
 gitops_repo: "sota2501/k8s-manifests"
 gitops_repo_branch: "main"
+
+# private な ghcr.io イメージ(unbound等)用の imagePullSecrets。
+# k8s-manifests 側の Deployment はこの名前(ghcr_pull_secret_name)で参照する。
+# 認証には ghcr_pull_token (group_vars/all/secrets.yml、git 管理外)を使う。
+# gitops_repo_token とは別の、read:packages のみを持つ専用PATを推奨(最小権限)。
+ghcr_username: "sota2501"
+ghcr_pull_secret_name: "ghcr-pull-secret"
+ghcr_pull_secret_namespaces:
+  - unbound

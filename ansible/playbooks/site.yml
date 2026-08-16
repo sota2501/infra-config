@@ -16,3 +16,6 @@
 
 - name: 05 - ArgoCD bootstrap
   ansible.builtin.import_playbook: 05-argocd-bootstrap.yml
+
+- name: 06 - private レジストリ用 imagePullSecrets 登録
+  ansible.builtin.import_playbook: 06-image-pull-secrets.yml

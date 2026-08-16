@@ -1,0 +1,45 @@
+---
+# private な ghcr.io イメージ(例: unbound)を k8s からpullするための
+# imagePullSecrets を、必要な namespace ごとに登録する。
+#
+# k8s-manifests 側の Deployment はこの Secret 名(ghcr_pull_secret_name)を
+# imagePullSecrets として参照する。Secret の実体(PAT)は k8s-manifests に
+# コミットせず、こちら(infra-config、group_vars/all/secrets.yml、git管理外)から
+# 投入する。argocd_bootstrap ロールの repository Secret と同じ考え方。
+
+- name: 対象namespaceを作成(存在しなければ)
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ item }}"
+    state: present
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+  loop: "{{ ghcr_pull_secret_namespaces }}"
+
+- name: ghcr.io pull用のimagePullSecretsを各namespaceに登録
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ ghcr_pull_secret_name }}"
+        namespace: "{{ item }}"
+      type: kubernetes.io/dockerconfigjson
+      stringData:
+        # NOTE: Jinja展開結果が丸ごと "{...}" というJSON文字列に見える値は、
+        # Ansibleが暗黙的にdict型へ変換してしまう既知の挙動があるため、
+        # to_json で明示的に文字列化する(そのままだと Secret.stringData の
+        # 型エラー "cannot unmarshal object into Go struct field ... of type string" になる)。
+        .dockerconfigjson: >-
+          {{ {
+            'auths': {
+              'ghcr.io': {
+                'username': ghcr_username,
+                'password': ghcr_pull_token,
+                'auth': (ghcr_username + ':' + ghcr_pull_token) | b64encode
+              }
+            }
+          } | to_json }}
+  loop: "{{ ghcr_pull_secret_namespaces }}"
