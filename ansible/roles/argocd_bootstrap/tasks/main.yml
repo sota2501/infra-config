@@ -18,6 +18,28 @@
     src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
     kubeconfig: "/home/{{ ansible_user }}/.kube/config"
 
+- name: "argocd-server を --insecure モードにする(server.insecure=true)"
+  # k8s-manifests側(infrastructure/nginx-gateway-fabric)でGatewayがTLSを終端し、
+  # argocd-serverへは平文HTTPで中継する構成にしたため。argocd-server自身が持つ
+  # 自己署名TLSは使わなくなる。
+  kubernetes.core.k8s:
+    state: patched
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+    kind: ConfigMap
+    name: argocd-cmd-params-cm
+    namespace: argocd
+    definition:
+      data:
+        server.insecure: "true"
+  register: argocd_insecure_cm
+
+- name: "argocd-server を再起動して server.insecure の変更を反映"
+  # ConfigMapが実際に変更された時だけ再起動する
+  ansible.builtin.command:
+    cmd: "kubectl rollout restart deployment/argocd-server -n argocd --kubeconfig=/home/{{ ansible_user }}/.kube/config"
+  when: argocd_insecure_cm.changed
+  changed_when: true
+
 - name: "k8s-manifests(private repo) の repository 認証情報を ArgoCD に登録"
   # ArgoCD 自身が以降継続的に private リポジトリを sync するために必要。
   # (これがないと初回 apply は通っても、2回目以降の自動 sync が全て失敗する)
