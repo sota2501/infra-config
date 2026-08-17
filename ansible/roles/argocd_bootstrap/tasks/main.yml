@@ -18,6 +18,21 @@
     src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
     kubeconfig: "/home/{{ ansible_user }}/.kube/config"
 
+- name: "kustomizeのhelmCharts機能を有効化(--enable-helm)"
+  # k8s-manifests側でMetalLB/NGINX Gateway Fabric等の3rd-party製品をHelm chart経由
+  # (kustomizeのhelmCharts:フィールド)で取り込む方針にしたため。
+  # ArgoCDはデフォルトではこのフラグを有効化しないため、明示的な設定が必要
+  # (repo-serverにはhelmバイナリ自体は標準で同梱されている)。
+  kubernetes.core.k8s:
+    state: patched
+    kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+    kind: ConfigMap
+    name: argocd-cm
+    namespace: argocd
+    definition:
+      data:
+        kustomize.buildOptions: --enable-helm
+
 - name: "argocd-server を --insecure モードにする(server.insecure=true)"
   # k8s-manifests側(infrastructure/nginx-gateway-fabric)でGatewayがTLSを終端し、
   # argocd-serverへは平文HTTPで中継する構成にしたため。argocd-server自身が持つ
