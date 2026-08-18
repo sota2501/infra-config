@@ -19,3 +19,6 @@
 
 - name: 06 - private レジストリ用 imagePullSecrets 登録
   ansible.builtin.import_playbook: 06-image-pull-secrets.yml
+
+- name: 07 - k8s VM内ZFSストレージ・PVCバックアップの構築
+  ansible.builtin.import_playbook: 07-zfs-vm-storage.yml

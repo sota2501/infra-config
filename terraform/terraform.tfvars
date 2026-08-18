@@ -26,11 +26,12 @@ control_plane_nodes = {
 
 worker_nodes = {
   "iris-k8s-wk-1" = {
-    vm_id     = 1101
-    cores     = 2
-    memory    = 2048
-    disk_gb   = 30
-    ip_cidr   = "192.168.1.144/24"
-    node_name = "fox"
+    vm_id        = 1101
+    cores        = 2
+    memory       = 2048
+    disk_gb      = 30
+    data_disk_gb = 50
+    ip_cidr      = "192.168.1.144/24"
+    node_name    = "fox"
   }
 }

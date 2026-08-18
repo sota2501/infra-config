@@ -26,6 +26,12 @@ variable "disk_gb" {
   type = number
 }
 
+variable "data_disk_gb" {
+  description = "追加データディスク(scsi1)のサイズ(GB)。nullなら追加しない。OSディスク(scsi0)とは独立させることで、cloud-initのgrowpartによる自動拡張の影響を受けない領域を確保する(ZFS等の用途向け)。"
+  type        = number
+  default     = null
+}
+
 variable "datastore_id" {
   type = string
 }

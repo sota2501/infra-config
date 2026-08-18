@@ -1,0 +1,38 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# PVC単位(ZFSデータセット単位)でスナップショットを取り、rabbit側の
+# バックアップ用プールへ増分send/receiveする。
+#
+# プール全体を再帰スナップショットするのではなく、データセットごとに
+# 独立したスナップショット履歴を持たせることで、個別PVCだけを過去の
+# 状態に戻す、といった個別リストアを可能にする設計。
+set -euo pipefail
+
+POOL="{{ zfs_pool_name }}"
+DATE="$(date +%Y%m%d-%H%M%S)"
+REMOTE_HOST="{{ zfs_backup_remote_host }}"
+REMOTE_USER="{{ zfs_backup_remote_user }}"
+REMOTE_POOL_PREFIX="{{ zfs_backup_remote_pool_prefix }}"
+SSH_KEY="{{ zfs_backup_ssh_key_path }}"
+SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes)
+
+# POOL直下の子データセット(=PVCごとのデータセット)だけを対象にする。
+# POOL自身は対象外(-r せず直下一覧から自分自身を除外)。
+for ds in $(zfs list -H -o name -r "$POOL" | grep -v "^${POOL}$"); do
+  name="$(basename "$ds")"
+
+  zfs snapshot "${ds}@${DATE}"
+
+  # このデータセットの直前のスナップショット(今回作成分を除く)を探す。
+  prev="$(zfs list -H -o name -t snapshot -r "$ds" 2>/dev/null | grep -v "@${DATE}$" | tail -1 || true)"
+
+  if [ -n "$prev" ]; then
+    echo "[$(date)] incremental send: ${ds} (${prev} -> @${DATE})"
+    zfs send -i "$prev" "${ds}@${DATE}" \
+      | ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "zfs receive ${REMOTE_POOL_PREFIX}/${name}"
+  else
+    echo "[$(date)] full send: ${ds}@${DATE}"
+    zfs send "${ds}@${DATE}" \
+      | ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "zfs receive ${REMOTE_POOL_PREFIX}/${name}"
+  fi
+done

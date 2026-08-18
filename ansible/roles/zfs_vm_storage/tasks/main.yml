@@ -1,0 +1,73 @@
+---
+# k8s VM内のZFS用データディスク(Terraformで追加したscsi1)を、パーティションを
+# 切らずディスク全体のままZFSプール化し、PVC単位のスナップショットをrabbitへ
+# バックアップする仕組みを整える。rabbit側(受信専用ユーザー・zfs allow・
+# command=ラッパースクリプト)は手動構築(README/実行手順の案内を参照)。
+#
+# NOTE: 以前はOSディスク内にパーティションを追加する方式だったが、
+# (1) Terraformでのディスク拡張後にGPTセカンダリヘッダーが旧サイズのまま
+#     残り、parted操作でmklabelが誤発動しかねない実害を確認したこと、
+# (2) 新規VM作成時はcloud-initのgrowpartがルートパーティションを
+#     ディスク全体まで自動拡張してしまい、確保したい未使用領域が残らない
+#     こと、の2点から、独立した追加ディスク(scsi1)をまるごと使う方式に
+#     変更した。これによりパーティション操作そのものが不要になり、
+#     上記の問題は構造的に発生しなくなる。
+
+- name: zfsutils-linuxパッケージをインストール
+  ansible.builtin.apt:
+    name: zfsutils-linux
+    state: present
+    update_cache: true
+
+- name: ZFS用データディスクの存在を確認
+  ansible.builtin.stat:
+    path: "{{ zfs_target_disk }}"
+  register: zfs_target_disk_stat
+  failed_when: not zfs_target_disk_stat.stat.exists
+  # 存在しない場合は terraform.tfvars の data_disk_gb 設定と
+  # `terraform apply` の実施状況を確認すること。
+
+- name: ZFSプールが既に存在するか確認
+  ansible.builtin.command: "zpool list {{ zfs_pool_name }}"
+  register: zfs_pool_check
+  failed_when: false
+  changed_when: false
+
+- name: "ZFSプール({{ zfs_pool_name }})を作成(データディスク全体をそのまま使用)"
+  ansible.builtin.command: "zpool create {{ zfs_pool_name }} {{ zfs_target_disk }}"
+  when: zfs_pool_check.rc != 0
+
+- name: ZFSバックアップ用SSH鍵ペアを生成(rabbit側への転送用、既存なら再生成しない)
+  ansible.builtin.command: >
+    ssh-keygen -t ed25519 -f {{ zfs_backup_ssh_key_path }} -N ""
+    -C "zfs-backup@{{ inventory_hostname }}"
+  args:
+    creates: "{{ zfs_backup_ssh_key_path }}"
+
+- name: 生成した公開鍵を読み取る
+  ansible.builtin.command: "cat {{ zfs_backup_ssh_key_path }}.pub"
+  register: zfs_backup_pubkey
+  changed_when: false
+
+- name: 公開鍵をrabbit側へ手動登録するよう案内
+  ansible.builtin.debug:
+    msg: >-
+      この公開鍵を rabbit の
+      /home/{{ zfs_backup_remote_user }}/.ssh/authorized_keys に
+      command= 制限付きで登録してください: {{ zfs_backup_pubkey.stdout }}
+
+- name: PVC単位バックアップスクリプトを配置
+  ansible.builtin.template:
+    src: zfs-pvc-backup.sh.j2
+    dest: /usr/local/bin/zfs-pvc-backup.sh
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: 日次バックアップのcronジョブを設定
+  ansible.builtin.cron:
+    name: "ZFS PVC snapshot backup to {{ zfs_backup_remote_host }}"
+    minute: "{{ zfs_backup_cron_minute }}"
+    hour: "{{ zfs_backup_cron_hour }}"
+    job: "/usr/local/bin/zfs-pvc-backup.sh >> /var/log/zfs-pvc-backup.log 2>&1"
+    user: root

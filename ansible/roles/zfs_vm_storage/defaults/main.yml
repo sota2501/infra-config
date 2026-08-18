@@ -1,0 +1,34 @@
+---
+# k8s VM(worker)内にZFSプールを構築し、OpenEBS ZFS LocalPV用の
+# ストレージとして使う。さらにPVC単位でスナップショットを取り、rabbit
+# (Proxmoxホスト、バックアップ用HDDプール)へ増分send/receiveする。
+#
+# 前提: terraform.tfvars の対象ノードに data_disk_gb を設定し、Proxmox上で
+# scsi1として追加データディスクが作成済みであること(OSディスクscsi0とは
+# 独立したディスクにすることで、cloud-initのgrowpartによる自動拡張の影響を
+# 受けない領域を確保している)。
+
+# ZFS用の追加データディスク(Terraformのscsi1)。パーティションは切らず、
+# ディスク全体をそのままZFSプールにする。
+zfs_target_disk: /dev/sdb
+
+# k8s VM内に作るZFSプール名。OpenEBS ZFS LocalPVのStorageClassからも参照する
+# (k8s-manifests/infrastructure/openebs-zfs-localpv 側)。
+zfs_pool_name: k8s-pool
+
+# --- バックアップ(rabbitへのsend/receive)関連 ---
+zfs_backup_ssh_key_path: /root/.ssh/zfs_backup_ed25519
+
+# rabbit(Proxmoxホスト)側の接続先。
+zfs_backup_remote_host: 192.168.1.96
+# rabbit側で手順書通りに作成した受信専用ユーザー(ansible/README.md参照)。
+zfs_backup_remote_user: zfsbackup
+# rabbit側の受信先データセットのプレフィックス。rabbit側の既存バックアップ用
+# プール名(zpool_backup)配下に k8s-pool を切る。rabbit側手順の
+# `zfs create zpool_backup/k8s-pool` および command= ラッパースクリプトの
+# 許可パターンと一致させること。
+zfs_backup_remote_pool_prefix: zpool_backup/k8s-pool
+
+# 日次バックアップの実行時刻。
+zfs_backup_cron_hour: "3"
+zfs_backup_cron_minute: "0"

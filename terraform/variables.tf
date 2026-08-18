@@ -68,24 +68,26 @@ variable "github_username" {
 variable "control_plane_nodes" {
   description = "control-plane ノードの定義。node_name には VM を配置する Proxmox ノード名を明示的に指定する"
   type = map(object({
-    vm_id     = number
-    cores     = number
-    memory    = number # MiB
-    disk_gb   = number
-    ip_cidr   = string # 例: 192.168.1.11/24
-    node_name = string
+    vm_id        = number
+    cores        = number
+    memory       = number # MiB
+    disk_gb      = number
+    data_disk_gb = optional(number) # ZFS等用の追加ディスク(scsi1)。省略時は追加しない
+    ip_cidr      = string           # 例: 192.168.1.11/24
+    node_name    = string
   }))
 }
 
 variable "worker_nodes" {
   description = "worker ノードの定義。node_name には VM を配置する Proxmox ノード名を明示的に指定する"
   type = map(object({
-    vm_id     = number
-    cores     = number
-    memory    = number # MiB
-    disk_gb   = number
-    ip_cidr   = string
-    node_name = string
+    vm_id        = number
+    cores        = number
+    memory       = number # MiB
+    disk_gb      = number
+    data_disk_gb = optional(number) # ZFS等用の追加ディスク(scsi1)。省略時は追加しない
+    ip_cidr      = string
+    node_name    = string
   }))
 }
 

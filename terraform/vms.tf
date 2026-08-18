@@ -10,6 +10,7 @@ module "control_plane" {
   cores             = each.value.cores
   memory            = each.value.memory
   disk_gb           = each.value.disk_gb
+  data_disk_gb      = each.value.data_disk_gb
   datastore_id      = var.vm_datastore_id
   network_bridge    = var.vm_network_bridge
   ip_cidr           = each.value.ip_cidr
@@ -31,6 +32,7 @@ module "worker" {
   cores             = each.value.cores
   memory            = each.value.memory
   disk_gb           = each.value.disk_gb
+  data_disk_gb      = each.value.data_disk_gb
   datastore_id      = var.vm_datastore_id
   network_bridge    = var.vm_network_bridge
   ip_cidr           = each.value.ip_cidr
