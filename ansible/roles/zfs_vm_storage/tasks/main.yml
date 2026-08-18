@@ -19,6 +19,28 @@
     state: present
     update_cache: true
 
+- name: ZFS ARC(読み取りキャッシュ)サイズの上限を設定(メモリひっ迫防止)
+  # デフォルトのARCはシステムメモリの最大50%まで使用しうる。今回のVMは
+  # メモリが少なく(terraform.tfvarsのmemory参照)、k8s自体のワークロード
+  # (kubelet/containerd/Calico/Pod)と競合してOOMやサーバー無応答を招く
+  # リスクがあるため、明示的に上限を設定する(モジュールロード時パラメータ、
+  # 次回モジュールロード時から永続的に有効)。
+  ansible.builtin.lineinfile:
+    path: /etc/modprobe.d/zfs.conf
+    line: "options zfs zfs_arc_max={{ zfs_arc_max_bytes }}"
+    create: true
+    mode: "0644"
+
+- name: ZFS ARCサイズ上限を即時反映(モジュールが既にロード済みの場合)
+  # zfs_arc_maxの動的変更はサイズを縮小する方向にはすぐ反映されないことが
+  # ある(OpenZFSの実装依存)。確実に反映させたい場合はVM再起動が必要。
+  ansible.builtin.shell: |
+    set -e
+    if [ -w /sys/module/zfs/parameters/zfs_arc_max ]; then
+      echo {{ zfs_arc_max_bytes }} > /sys/module/zfs/parameters/zfs_arc_max
+    fi
+  changed_when: false
+
 - name: ZFS用データディスクの存在を確認
   ansible.builtin.stat:
     path: "{{ zfs_target_disk }}"

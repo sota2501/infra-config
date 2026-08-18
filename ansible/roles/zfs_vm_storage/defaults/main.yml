@@ -16,6 +16,13 @@ zfs_target_disk: /dev/sdb
 # (k8s-manifests/infrastructure/openebs-zfs-localpv 側)。
 zfs_pool_name: k8s-pool
 
+# ZFS ARC(読み取りキャッシュ)の最大サイズ(bytes)。デフォルトのままだと
+# システムメモリの最大50%まで使用しうるが、このVMはメモリが少なく
+# (terraform.tfvarsのworker_nodes.*.memory参照、現状2048MiB)、k8s自体の
+# ワークロードと競合してOOM・サーバー無応答を招くリスクがあるため制限する。
+# 512MiB。VMのメモリを増やす場合はこちらも合わせて見直すこと。
+zfs_arc_max_bytes: 536870912
+
 # --- バックアップ(rabbitへのsend/receive)関連 ---
 zfs_backup_ssh_key_path: /root/.ssh/zfs_backup_ed25519
 
