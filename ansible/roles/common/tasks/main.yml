@@ -52,6 +52,9 @@
     - br_netfilter
 
 - name: k8s 用 sysctl パラメータを設定
+  # NOTE: kernel.unprivileged_bpf_disabled は "write once" な特殊なsysctlで、
+  # 既にUbuntuのデフォルト設定(多くの場合"2")になっている場合、reload:true
+  # による動的反映では効果がなく、ノードの再起動が必須。
   ansible.posix.sysctl:
     name: "{{ item.name }}"
     value: "{{ item.value }}"
@@ -61,6 +64,7 @@
     - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
     - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
     - { name: net.ipv4.ip_forward, value: "1" }
+    - { name: kernel.unprivileged_bpf_disabled, value: "0" }
 
 - name: 必要な apt パッケージをインストール
   ansible.builtin.apt:

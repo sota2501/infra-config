@@ -101,6 +101,21 @@ chmod 600 /home/zfsbackup/.ssh/authorized_keys
 zfs allow -u zfsbackup create,receive,mount,destroy,snapshot zpool_backup/k8s-pool
 ```
 
+## eBPFプログラム用のカーネル設定(roles/common)
+
+k8s-manifests側の`infrastructure/ebpf-dnat-router`(TC ingress eBPFプログラム、DMZ用
+外部公開IPのDNAT処理)が、Podが`privileged: true`かつ全capability保持であっても
+`Prog section 'tc' rejected: Permission denied (13)!`でロードに失敗する事象が発生した。
+
+原因は`kernel.unprivileged_bpf_disabled`が`2`(Ubuntuのデフォルトでこの値になって
+いることが多い)になっていたこと。`roles/common`(`playbooks/01-prereqs.yml`経由、
+`k8s_cluster`グループ=全ノード対象)でこれを`0`に設定するタスクを追加した。
+
+**重要**: `kernel.unprivileged_bpf_disabled`は"write once"な特殊なsysctlで、既に`2`に
+なっているノードでは`sysctl`コマンドによる動的反映(`reload: true`)が効かない。
+`ansible-playbook playbooks/01-prereqs.yml`を実行しても、**対象ノードを再起動しない
+限り値は変わらない**。適用後は忘れずに対象ノードを再起動すること。
+
 ## 現状
 
 単一 control-plane + 1 worker 構成。HA 化(kube-vip 等)や
