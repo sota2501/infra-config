@@ -37,18 +37,18 @@ ansible-playbook playbooks/01-prereqs.yml
 inventory/home/hosts.yml        control_plane / workers のホスト一覧
 inventory/home/group_vars/all.yml  k8sバージョン, Pod CIDR 等の共通変数
 playbooks/01-prereqs.yml         OS共通設定・containerd・kubernetesパッケージ
-playbooks/02-kubeadm-init.yml    control-plane 初期化
-playbooks/03-kubeadm-join.yml    worker の join
-playbooks/04-cni.yml             Calico インストール
-playbooks/05-argocd-bootstrap.yml  ArgoCD インストール + root Application apply
-playbooks/06-image-pull-secrets.yml  private レジストリ用 imagePullSecrets 登録
-playbooks/07-zfs-vm-storage.yml  worker内ZFSストレージ・PVCバックアップの構築
+playbooks/02-zfs-vm-storage.yml  worker内ZFSストレージ・PVCバックアップの構築
+playbooks/03-kubeadm-init.yml    control-plane 初期化
+playbooks/04-kubeadm-join.yml    worker の join
+playbooks/05-cni.yml             Calico インストール
+playbooks/06-argocd-bootstrap.yml  ArgoCD インストール + root Application apply
+playbooks/07-image-pull-secrets.yml  private レジストリ用 imagePullSecrets 登録
 roles/                            各ステップの実タスク
 ```
 
-## ZFS PVCバックアップ(playbooks/07-zfs-vm-storage.yml)
+## ZFS PVCバックアップ(playbooks/02-zfs-vm-storage.yml)
 
-worker(iris-k8s-wk-1)のscsi1データディスクをZFSプール化し、OpenEBS ZFS LocalPV
+worker(iris-k8s-wk-1)のscsi1データディスクをZFSプール(`iris-node`)化し、OpenEBS ZFS LocalPV
 (k8s-manifests側)のバックエンドにする。さらにPVC単位でスナップショットを取り、
 Proxmoxホスト fox のバックアップ用HDDプールへ日次で増分`zfs send/receive`する。
 
@@ -62,8 +62,8 @@ Proxmoxホスト fox のバックアップ用HDDプールへ日次で増分`zfs 
 接続先: `192.168.1.97`、既存バックアップ用プール: `zpool_backup`(HDD)
 
 ```bash
-# 1. バックアップ受信用データセットの作成
-zfs create zpool_backup/k8s-pool
+# 1. バックアップ受信用データセットの作成(ノード番号はwk-Nに対応)
+zfs create zpool_backup/iris-node-1
 
 # 2. 受信専用の非rootユーザーを作成
 useradd -m -s /bin/bash zfsbackup
@@ -72,7 +72,7 @@ useradd -m -s /bin/bash zfsbackup
 cat > /usr/local/bin/zfs-receive-wrapper.sh << 'SCRIPT'
 #!/bin/bash
 case "$SSH_ORIGINAL_COMMAND" in
-  "zfs receive zpool_backup/k8s-pool/"*)
+  "zfs receive zpool_backup/iris-node-"*)
     # シェルメタ文字の混入を拒否(コマンドインジェクション対策)
     if [[ "$SSH_ORIGINAL_COMMAND" =~ [\;\|\&\$\`\(\)\<\>] ]]; then
       echo "invalid characters in command" >&2
@@ -88,7 +88,7 @@ esac
 SCRIPT
 chmod 755 /usr/local/bin/zfs-receive-wrapper.sh
 
-# 4. k8s VM側の公開鍵を登録(07-zfs-vm-storage.yml実行後にdebug出力される鍵を貼り付け)
+# 4. k8s VM側の公開鍵を登録(02-zfs-vm-storage.yml実行後にdebug出力される鍵を貼り付け)
 mkdir -p /home/zfsbackup/.ssh
 cat >> /home/zfsbackup/.ssh/authorized_keys << 'EOF'
 command="/usr/local/bin/zfs-receive-wrapper.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty <k8s VM側の公開鍵をここに貼り付け>
@@ -98,7 +98,7 @@ chmod 700 /home/zfsbackup/.ssh
 chmod 600 /home/zfsbackup/.ssh/authorized_keys
 
 # 5. ZFS権限の委譲(root権限を介さずzfsbackupユーザーだけで完結させる)
-zfs allow -u zfsbackup create,receive,mount,destroy,snapshot zpool_backup/k8s-pool
+zfs allow -u zfsbackup create,receive,mount,destroy,snapshot zpool_backup/iris-node-1
 ```
 
 ## eBPFプログラム用のカーネル設定(roles/common)

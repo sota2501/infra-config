@@ -14,7 +14,7 @@ zfs_target_disk: /dev/sdb
 
 # k8s VM内に作るZFSプール名。OpenEBS ZFS LocalPVのStorageClassからも参照する
 # (k8s-manifests/infrastructure/openebs-zfs-localpv 側)。
-zfs_pool_name: k8s-pool
+zfs_pool_name: iris-node
 
 # ZFS ARC(読み取りキャッシュ)の最大サイズ(bytes)。デフォルトのままだと
 # システムメモリの最大50%まで使用しうるが、このVMはメモリが少なく
@@ -30,11 +30,14 @@ zfs_backup_ssh_key_path: /root/.ssh/zfs_backup_ed25519
 zfs_backup_remote_host: 192.168.1.97
 # fox側で手順書通りに作成した受信専用ユーザー(ansible/README.md参照)。
 zfs_backup_remote_user: zfsbackup
-# fox側の受信先データセットのプレフィックス。fox側の既存バックアップ用
-# プール名(zpool_backup)配下に k8s-pool を切る。fox側手順の
-# `zfs create zpool_backup/k8s-pool` および command= ラッパースクリプトの
+# fox側のバックアップ用プール名。この配下に {{ zfs_pool_name }}-N
+# (Nはホスト名末尾の通し番号: iris-k8s-wk-1 → 1)のデータセットが作られる。
+# fox側手順の `zfs create` および command= ラッパースクリプトの
 # 許可パターンと一致させること。
-zfs_backup_remote_pool_prefix: zpool_backup/k8s-pool
+zfs_backup_remote_pool: zpool_backup
+# ノード番号をホスト名(iris-k8s-wk-N)から自動抽出する。
+# ホスト名の命名規則が変わった場合はこの正規表現を修正すること。
+zfs_node_number: "{{ inventory_hostname | regex_search('wk-(\\d+)$', '\\1') | first }}"
 
 # 日次バックアップの実行時刻。
 zfs_backup_cron_hour: "3"

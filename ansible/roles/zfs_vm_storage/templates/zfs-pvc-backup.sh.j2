@@ -12,7 +12,7 @@ POOL="{{ zfs_pool_name }}"
 DATE="$(date +%Y%m%d-%H%M%S)"
 REMOTE_HOST="{{ zfs_backup_remote_host }}"
 REMOTE_USER="{{ zfs_backup_remote_user }}"
-REMOTE_POOL_PREFIX="{{ zfs_backup_remote_pool_prefix }}"
+REMOTE_POOL_PREFIX="{{ zfs_backup_remote_pool }}/{{ zfs_pool_name }}-{{ zfs_node_number }}"
 SSH_KEY="{{ zfs_backup_ssh_key_path }}"
 SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes)
 

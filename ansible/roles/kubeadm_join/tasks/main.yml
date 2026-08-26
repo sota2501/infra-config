@@ -1,7 +1,7 @@
 ---
 # kubeadm_init ロール実行時に control-plane ホストで set_fact(cacheable) された
 # kubeadm_join_command を使い、worker を join させる。
-# playbooks/02-kubeadm-init.yml -> 03-kubeadm-join.yml の順で実行する前提。
+# playbooks/03-kubeadm-init.yml -> 04-kubeadm-join.yml の順で実行する前提。
 
 - name: kubeadm join が実行済みか確認
   ansible.builtin.stat:

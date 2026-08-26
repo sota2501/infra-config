@@ -5,20 +5,20 @@
 - name: 01 - OS/containerd/kubernetesパッケージの前提セットアップ
   ansible.builtin.import_playbook: 01-prereqs.yml
 
-- name: 02 - kubeadm init(control-plane)
-  ansible.builtin.import_playbook: 02-kubeadm-init.yml
+- name: 02 - k8s VM内ZFSストレージ・PVCバックアップの構築
+  ansible.builtin.import_playbook: 02-zfs-vm-storage.yml
 
-- name: 03 - kubeadm join(workers)
-  ansible.builtin.import_playbook: 03-kubeadm-join.yml
+- name: 03 - kubeadm init(control-plane)
+  ansible.builtin.import_playbook: 03-kubeadm-init.yml
 
-- name: 04 - CNI(Calico)インストール
-  ansible.builtin.import_playbook: 04-cni.yml
+- name: 04 - kubeadm join(workers)
+  ansible.builtin.import_playbook: 04-kubeadm-join.yml
 
-- name: 05 - ArgoCD bootstrap
-  ansible.builtin.import_playbook: 05-argocd-bootstrap.yml
+- name: 05 - CNI(Calico)インストール
+  ansible.builtin.import_playbook: 05-cni.yml
 
-- name: 06 - private レジストリ用 imagePullSecrets 登録
-  ansible.builtin.import_playbook: 06-image-pull-secrets.yml
+- name: 06 - ArgoCD bootstrap
+  ansible.builtin.import_playbook: 06-argocd-bootstrap.yml
 
-- name: 07 - k8s VM内ZFSストレージ・PVCバックアップの構築
-  ansible.builtin.import_playbook: 07-zfs-vm-storage.yml
+- name: 07 - private レジストリ用 imagePullSecrets 登録
+  ansible.builtin.import_playbook: 07-image-pull-secrets.yml

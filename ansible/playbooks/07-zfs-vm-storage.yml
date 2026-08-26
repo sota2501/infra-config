@@ -1,6 +1,0 @@
----
-- name: 07 - k8s VM内ZFSストレージ・PVCバックアップの構築
-  hosts: workers
-  become: true
-  roles:
-    - zfs_vm_storage

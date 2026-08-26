@@ -1,6 +1,6 @@
 ---
 # このロールは group_vars/all.yml の kubeadm_init_host に指定したホストでのみ実行する想定
-# (playbooks/03-kubeadm-init.yml 側で対象を絞り込む)。
+# (playbooks/03-kubeadm-init.yml 側で when 条件で対象を絞り込む)。
 
 - name: kubeadm init が実行済みか確認
   ansible.builtin.stat:
