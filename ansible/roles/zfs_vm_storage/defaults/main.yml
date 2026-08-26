@@ -1,6 +1,6 @@
 ---
 # k8s VM(worker)内にZFSプールを構築し、OpenEBS ZFS LocalPV用の
-# ストレージとして使う。さらにPVC単位でスナップショットを取り、rabbit
+# ストレージとして使う。さらにPVC単位でスナップショットを取り、fox
 # (Proxmoxホスト、バックアップ用HDDプール)へ増分send/receiveする。
 #
 # 前提: terraform.tfvars の対象ノードに data_disk_gb を設定し、Proxmox上で
@@ -23,15 +23,15 @@ zfs_pool_name: k8s-pool
 # 512MiB。VMのメモリを増やす場合はこちらも合わせて見直すこと。
 zfs_arc_max_bytes: 536870912
 
-# --- バックアップ(rabbitへのsend/receive)関連 ---
+# --- バックアップ(foxへのsend/receive)関連 ---
 zfs_backup_ssh_key_path: /root/.ssh/zfs_backup_ed25519
 
-# rabbit(Proxmoxホスト)側の接続先。
-zfs_backup_remote_host: 192.168.1.96
-# rabbit側で手順書通りに作成した受信専用ユーザー(ansible/README.md参照)。
+# fox(Proxmoxホスト)側の接続先。
+zfs_backup_remote_host: 192.168.1.97
+# fox側で手順書通りに作成した受信専用ユーザー(ansible/README.md参照)。
 zfs_backup_remote_user: zfsbackup
-# rabbit側の受信先データセットのプレフィックス。rabbit側の既存バックアップ用
-# プール名(zpool_backup)配下に k8s-pool を切る。rabbit側手順の
+# fox側の受信先データセットのプレフィックス。fox側の既存バックアップ用
+# プール名(zpool_backup)配下に k8s-pool を切る。fox側手順の
 # `zfs create zpool_backup/k8s-pool` および command= ラッパースクリプトの
 # 許可パターンと一致させること。
 zfs_backup_remote_pool_prefix: zpool_backup/k8s-pool

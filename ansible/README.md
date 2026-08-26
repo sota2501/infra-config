@@ -50,16 +50,16 @@ roles/                            各ステップの実タスク
 
 worker(iris-k8s-wk-1)のscsi1データディスクをZFSプール化し、OpenEBS ZFS LocalPV
 (k8s-manifests側)のバックエンドにする。さらにPVC単位でスナップショットを取り、
-Proxmoxホスト rabbit のバックアップ用HDDプールへ日次で増分`zfs send/receive`する。
+Proxmoxホスト fox のバックアップ用HDDプールへ日次で増分`zfs send/receive`する。
 
-このplaybook実行前に、**rabbit側の設定を手動で行っておく必要がある**
+このplaybook実行前に、**fox側の設定を手動で行っておく必要がある**
 (意図的にAnsible管理外にしている。ワークロードが動くVMからハイパーバイザー
 ホストへ任意コマンド実行可能なSSHを許可するのはリスクが大きいため、
 `command=`で実行コマンドをホワイトリスト化した専用ユーザーのみを使う設計)。
 
-### rabbit側の手動手順
+### fox側の手動手順
 
-接続先: `192.168.1.96`、既存バックアップ用プール: `zpool_backup`(HDD)
+接続先: `192.168.1.97`、既存バックアップ用プール: `zpool_backup`(HDD)
 
 ```bash
 # 1. バックアップ受信用データセットの作成

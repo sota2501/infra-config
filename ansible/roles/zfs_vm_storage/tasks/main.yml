@@ -1,7 +1,7 @@
 ---
 # k8s VM内のZFS用データディスク(Terraformで追加したscsi1)を、パーティションを
-# 切らずディスク全体のままZFSプール化し、PVC単位のスナップショットをrabbitへ
-# バックアップする仕組みを整える。rabbit側(受信専用ユーザー・zfs allow・
+# 切らずディスク全体のままZFSプール化し、PVC単位のスナップショットをfoxへ
+# バックアップする仕組みを整える。fox側(受信専用ユーザー・zfs allow・
 # command=ラッパースクリプト)は手動構築(README/実行手順の案内を参照)。
 #
 # NOTE: 以前はOSディスク内にパーティションを追加する方式だったが、
@@ -59,7 +59,7 @@
   ansible.builtin.command: "zpool create {{ zfs_pool_name }} {{ zfs_target_disk }}"
   when: zfs_pool_check.rc != 0
 
-- name: ZFSバックアップ用SSH鍵ペアを生成(rabbit側への転送用、既存なら再生成しない)
+- name: ZFSバックアップ用SSH鍵ペアを生成(fox側への転送用、既存なら再生成しない)
   ansible.builtin.command: >
     ssh-keygen -t ed25519 -f {{ zfs_backup_ssh_key_path }} -N ""
     -C "zfs-backup@{{ inventory_hostname }}"
@@ -71,10 +71,10 @@
   register: zfs_backup_pubkey
   changed_when: false
 
-- name: 公開鍵をrabbit側へ手動登録するよう案内
+- name: 公開鍵をfox側へ手動登録するよう案内
   ansible.builtin.debug:
     msg: >-
-      この公開鍵を rabbit の
+      この公開鍵を fox の
       /home/{{ zfs_backup_remote_user }}/.ssh/authorized_keys に
       command= 制限付きで登録してください: {{ zfs_backup_pubkey.stdout }}
 
