@@ -73,9 +73,15 @@
       - ca-certificates
       - curl
       - gnupg
-      - nfs-common
+      - open-iscsi
     state: present
     update_cache: true
+
+- name: iscsid サービスを有効化・起動(Democratic-CSI iSCSI用)
+  ansible.builtin.systemd:
+    name: iscsid
+    enabled: true
+    state: started
 
 - name: "Python kubernetes ライブラリをインストール(control-plane のみ)"
   # cni_calico / argocd_bootstrap ロールが使う kubernetes.core.k8s モジュールは、

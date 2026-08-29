@@ -62,78 +62,115 @@ cd ansible && ansible-lint   # production profile 全通過が正
 ```
 Problemsパネルの`role not found`等はこの既知の制限による誤検知の可能性が高い。
 
-## ZFS NFSサーバーの構築(fox側手動手順)
+## iSCSIターゲットの構築(fox側手動手順)
 
-Proxmoxホスト fox 上にZFSデータセット `zpool/iris-nfs` を作成し、NFSで共有する。
-k8sクラスタからネットワーク経由でマウントできる共有ストレージとして利用する。
+Proxmoxホスト fox 上にiSCSIターゲット(LIO/targetcli)を構築し、
+[Democratic-CSI](https://github.com/democratic-csi/democratic-csi)経由で
+k8sクラスタにブロックストレージ(ZFS zvol + iSCSI + ext4)を提供する。
+
+将来的にはLonghornへ移行予定。
 
 ### 前提
 
 - fox(`192.168.1.97`)にZFSプール `zpool` が存在すること
 - fox上でroot権限があること
+- `02-zfs-vm-storage.yml`実行済み(SSH鍵ペアが生成済みであること)
 
 ### fox側の手順
 
 ```bash
-# 1. NFS サーバーパッケージのインストール
-apt install -y nfs-kernel-server
+# 1. targetcli のインストール
+apt install -y targetcli-fb
 
-# 2. ZFS データセットの作成
-zfs create zpool/iris-nfs
+# 2. iSCSIターゲットサービスの有効化
+systemctl enable --now rtslib-fb-targetctl
 
-# 3. マウントポイントの確認
-#    ZFS が自動的に /zpool/iris-nfs にマウントする
-zfs get mountpoint zpool/iris-nfs
-# NAME            PROPERTY    VALUE           SOURCE
-# zpool/iris-nfs   mountpoint  /zpool/iris-nfs  default
+# 3. Democratic-CSI用のZFSデータセットを作成
+#    zvol(ブロックボリューム)の親となるデータセット。
+#    Democratic-CSIが PVC 作成時にこの配下に zvol を自動作成する。
+zfs create zpool/iris-iscsi
+zfs create zpool/iris-iscsi-snaps
 
-# 4. NFS エクスポートの設定
-#    k8s ネットワーク(192.168.1.0/24)からのアクセスのみ許可する。
-#    no_root_squash: k8s の NFS プロビジョナーが PV 用サブディレクトリの
-#    作成・権限変更を root で行うために必要。
-cat >> /etc/exports << 'EOF'
-/zpool/iris-nfs 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+# 4. Democratic-CSI用の専用ユーザーを作成
+useradd -m -s /bin/bash csi
+
+# 5. sudoers 設定(zfs / targetcli コマンドをパスワードなしで許可)
+#    Democratic-CSIはSSH経由でこれらのコマンドを実行してzvol作成・
+#    iSCSIターゲット管理を行う。
+cat > /etc/sudoers.d/csi << 'EOF'
+Defaults:csi !requiretty
+csi ALL=(ALL) NOPASSWD: /sbin/zfs *, /usr/bin/zfs *, /usr/bin/targetcli *
 EOF
+chmod 440 /etc/sudoers.d/csi
 
-# 5. エクスポートの反映
-exportfs -ra
+# 6. SSH鍵の登録
+#    ZFSスナップショット転送用の鍵(02-zfs-vm-storage.yml で生成済み)を
+#    使い回す。k8s VM上の /root/.ssh/zfs_backup_ed25519.pub の内容を
+#    貼り付ける。
+mkdir -p /home/csi/.ssh
+cat >> /home/csi/.ssh/authorized_keys << 'EOF'
+<k8s VM上の /root/.ssh/zfs_backup_ed25519.pub の内容を貼り付け>
+EOF
+chown -R csi:csi /home/csi/.ssh
+chmod 700 /home/csi/.ssh
+chmod 600 /home/csi/.ssh/authorized_keys
+```
 
-# 6. NFS サーバーの起動・自動起動の有効化
-systemctl enable --now nfs-kernel-server
+### k8s側のSecret作成
 
-# 7. エクスポートの確認
-exportfs -v
-# /zpool/iris-nfs  192.168.1.0/24(rw,...,no_root_squash,no_subtree_check) が
-# 出力されること
+Democratic-CSIドライバー設定(SSH秘密鍵含む)をSecretとして登録する。
+k8s VM上の `/root/.ssh/zfs_backup_ed25519` の内容を使用する。
+
+```bash
+# k8s VM上でSecretを作成
+kubectl create namespace democratic-csi
+
+kubectl create secret generic democratic-csi-driver-config \
+  -n democratic-csi \
+  --from-file=driver-config-file.yaml=/dev/stdin << 'EOF'
+driver: zfs-generic-iscsi
+sshConnection:
+  host: 192.168.1.97
+  port: 22
+  username: csi
+  privateKey: |
+    <k8s VM上の /root/.ssh/zfs_backup_ed25519 の内容を貼り付け>
+zfs:
+  cli:
+    sudoEnabled: true
+  datasetParentName: zpool/iris-iscsi
+  detachedSnapshotsDatasetParentName: zpool/iris-iscsi-snaps
+iscsi:
+  shareStrategy: targetCli
+  shareStrategyTargetCli:
+    sudoEnabled: true
+    basename: "iqn.2026-08.internal.proxmox.fox"
+    tpg:
+      attributes:
+        authentication: 0
+        generate_node_acls: 1
+        demo_mode_write_protect: 0
+  targetPortal: "192.168.1.97:3260"
+  interface: ""
+EOF
 ```
 
 ### k8sノードからの疎通確認
 
 ```bash
 # k8s VM(iris-k8s-wk-1 等)から実行
+# open-iscsi は ansible の 01-prereqs.yml(common ロール)で全ノードに導入済み
 
-# nfs-common は ansible の 01-prereqs.yml(common ロール)で全ノードに導入済み
-
-# エクスポート一覧の確認
-showmount -e 192.168.1.97
-# Export list for 192.168.1.97:
-# /zpool/iris-nfs 192.168.1.0/24
-
-# テストマウント
-mkdir -p /mnt/test-nfs
-mount -t nfs 192.168.1.97:/zpool/iris-nfs /mnt/test-nfs
-df -h /mnt/test-nfs
-umount /mnt/test-nfs
-rmdir /mnt/test-nfs
+# iSCSIターゲットの検出
+iscsiadm -m discovery -t sendtargets -p 192.168.1.97:3260
 ```
 
 ### k8s側での利用
 
-NFSをk8sのPersistent Volumeとして使う場合は、
-[k8s-manifests](https://github.com/sota2501/k8s-manifests)側に
-NFS CSIドライバー（[csi-driver-nfs](https://github.com/kubernetes-csi/csi-driver-nfs)）
-またはnfs-subdir-external-provisionerをデプロイし、StorageClassから
-`192.168.1.97:/zpool/iris-nfs` を参照する。
+[k8s-manifests](https://github.com/sota2501/k8s-manifests)側の
+Democratic-CSI Helmチャート(infrastructure/democratic-csi)がStorageClass `zpool-iscsi`
+を作成する。PVCで`storageClass: zpool-iscsi`を指定すると、fox上にzvol作成→
+iSCSIターゲット公開→ノードでext4フォーマット・マウントが自動で行われる。
 
 ## 現状
 
