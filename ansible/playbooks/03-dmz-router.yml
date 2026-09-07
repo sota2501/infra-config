@@ -1,0 +1,6 @@
+---
+- name: ebpf-dmz-router をノードへ導入する
+  hosts: k8s_cluster
+  become: true
+  roles:
+    - role: dmz_router

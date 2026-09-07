@@ -1,0 +1,354 @@
+---
+# dmz-router eBPFプログラムのノード導入。
+# 仕様は ebpf-dmz-router:docs/specs/ebpf-program.md「ノードへの導入」。
+# あちらは手順を規定するだけで自動化の実装を持たないため、このロールが
+# その実装にあたる。手順の番号は向こうのドキュメントに対応させている。
+#
+# Kubernetes APIを操作するタスクは持たない。転送先識別子をMACからIPへ
+# 変更した際にMACの収集・配布が不要になったため
+# (ebpf-dmz-router:docs/specs/controller.md「MACアドレスは扱わない」)。
+
+- name: 必須変数が指定されていることを確認
+  # 未定義のまま進むと tags/v という存在しないタグをAPIに問い合わせるため、
+  # ノードに触る前にここで止める。
+  ansible.builtin.assert:
+    that:
+      - dmz_router_version is defined
+      - dmz_router_version | length > 0
+    fail_msg: >-
+      dmz_router_version は必須です。
+      inventory/home/group_vars/all/vars.yml で定義してください。
+
+# --- 手順1 前提の確認(カーネルバージョン、アーキテクチャ、bpffs) ---
+# ebpf-dmz-router:docs/knowledge/security-capabilities.md「カーネル・OS要件」。
+
+- name: カーネルバージョンを確認(TCXにはLinux 6.6以上が必要)
+  ansible.builtin.assert:
+    that:
+      - ansible_kernel.split('-')[0] is version(dmz_router_min_kernel_version, '>=')
+    fail_msg: >-
+      カーネル{{ ansible_kernel }}はTCX(kernel {{ dmz_router_min_kernel_version }}+)の
+      要件を満たしません。ノードのカーネルを更新してください。
+    success_msg: "カーネル{{ ansible_kernel }}はTCXの要件を満たします。"
+
+- name: 対象アーキテクチャのリリースアセット名を解決
+  # default(omit) は使わないこと。set_fact では omit が「そのキーを渡さない」と
+  # 解釈されるため、キーがこれ1つだと set_fact 自体が
+  # "No key/value pairs provided" で落ち、下の assert の説明的なメッセージに
+  # 到達しない(実測で確認)。空文字にしておいて assert で判定する。
+  ansible.builtin.set_fact:
+    dmz_router_release_arch: "{{ dmz_router_arch_map[ansible_architecture] | default('') }}"
+
+- name: アーキテクチャがサポート対象か確認
+  ansible.builtin.assert:
+    that:
+      - dmz_router_release_arch | length > 0
+    fail_msg: >-
+      ansible_architecture={{ ansible_architecture }}に対応するリリースアセットが
+      dmz_router_arch_mapにありません(amd64/arm64のみ対応)。
+
+- name: pin先がbpffsの配下にあることを確認
+  # pin先がbpffs外だと bpftool prog loadall が
+  # "Error: failed to pin program" で失敗する。attach時まで気づけないと
+  # 原因が分かりにくいので、設定値の段階で弾く。
+  ansible.builtin.assert:
+    that:
+      - dmz_router_pin_path.startswith(dmz_router_bpffs_path ~ '/')
+    fail_msg: >-
+      dmz_router_pin_path({{ dmz_router_pin_path }})は
+      dmz_router_bpffs_path({{ dmz_router_bpffs_path }})の配下でなければなりません。
+
+# ansible.posix.mount(state: mounted)は、未マウントならマウントし、
+# 常に/etc/fstabへ永続化する(既にマウント済みでも冪等)。手順1の
+# 「bpffsが/sys/fs/bpfにマウント済みか確認し、未マウントならマウントして
+# /etc/fstabへ永続化する」をこの1タスクで満たす。
+- name: "bpffsをマウントし、/etc/fstabへ永続化: {{ dmz_router_bpffs_path }}"
+  ansible.posix.mount:
+    path: "{{ dmz_router_bpffs_path }}"
+    src: bpf
+    fstype: bpf
+    state: mounted
+
+# --- 手順2 bpftoolとiproute2の導入 ---
+# bpftoolは**v7.5.0以上**でなければならない。`bpftool net attach`が
+# tcx_ingress/tcx_egressを解釈できるようになったのがv7.5.0からで、v7.4.0では
+# 「Error: invalid net attach/detach type: tcx_ingress」で失敗する。これは
+# カーネル要件(6.6+)とは独立した別要件である
+# (ebpf-dmz-router:docs/knowledge/security-capabilities.md「カーネル・OS要件」)。
+#
+# Debian/Ubuntuの linux-tools-<稼働カーネル> が要件を満たすとは限らない。
+# Ubuntu 24.04の既定カーネルは6.8系で、対応するbpftoolはv7.4.0にとどまる。
+# そこで、導入後にTCX対応のbpftoolを探し、無ければ稼働カーネルより新しい
+# linux-toolsを追加で入れて再探索する。新しいlinux-toolsはユーザ空間の
+# ツールだけを/usr/lib/linux-tools/<version>/へ置き、カーネルイメージは
+# 引き込まない。
+
+- name: パッケージ(bpftool、iproute2)を導入
+  ansible.builtin.package:
+    name: "{{ dmz_router_packages }}"
+    state: present
+
+# 探索は「見つかったパスをstdoutに出す/見つからなければ空」で表す。終了コードは
+# 常に0なので、失敗したときだけ(=モジュールが実行できなかったとき)このタスクが
+# 落ちる。候補ごとの判定結果はstderrに出るので、下のassertがそれを表示する。
+#
+# **探索の結果は必ずその直後のset_factで採用しきること。また、2回の探索で
+# registerの変数名を使い回さないこと。** スキップされたタスクもregisterを行い、
+# 変数を{"changed": false, "skipped": true}で上書きしてしまう。そのため
+# 「1回目の探索で見つかる→ブロックがスキップされる」経路をたどると、
+# ブロック内の再探索タスクがスキップされる際に1回目の結果(stdout/stderr/rc)を
+# 消してしまい、パスが空のまま下のassertが落ちる。
+- name: TCX(tcx_ingress)に対応したbpftoolを探す
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: "{{ dmz_router_bpftool_probe_script }}"
+  register: dmz_router_bpftool_probe
+  changed_when: false
+  when: dmz_router_bpftool | length == 0
+
+- name: 見つかったbpftoolを採用する
+  ansible.builtin.set_fact:
+    dmz_router_bpftool: "{{ dmz_router_bpftool_probe.stdout | trim }}"
+  when:
+    - dmz_router_bpftool | length == 0
+    - dmz_router_bpftool_probe.stdout | default('') | trim | length > 0
+
+# ここまででdmz_router_bpftoolが空なら、TCX対応のbpftoolが無いということ。
+# 探索結果の変数ではなくdmz_router_bpftool自体を条件にしているので、上記の
+# 上書き問題の影響を受けない。
+- name: TCX対応のbpftoolが無いので、より新しいlinux-toolsを導入
+  when:
+    - dmz_router_bpftool | length == 0
+    - ansible_facts['os_family'] == 'Debian'
+  block:
+    - name: 入手可能な最新のlinux-tools-*-genericを調べる
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -uo pipefail
+          apt-get update -qq >/dev/null 2>&1 || true
+          apt-cache search --names-only '^linux-tools-[0-9.]+-[0-9]+-generic$' 2>/dev/null \
+            | awk '{print $1}' | sort -V | tail -1 || true
+      register: dmz_router_newer_tools_pkg
+      changed_when: false
+
+    - name: 導入できるパッケージが見つかったことを確認
+      ansible.builtin.assert:
+        that:
+          - dmz_router_newer_tools_pkg.stdout | trim | length > 0
+        fail_msg: >-
+          TCX対応のbpftool(v7.5.0以上)が無く、代わりに導入できる
+          linux-tools-*-generic も見つかりませんでした。
+          dmz_router_bpftool_packages_by_os_family と dmz_router_bpftool を
+          環境に合わせて明示的に指定してください。
+          候補ごとの判定:
+          {{ dmz_router_bpftool_probe.stderr | default('') | trim }}
+
+    - name: "より新しいlinux-toolsを導入: {{ dmz_router_newer_tools_pkg.stdout | default('') | trim }}"
+      ansible.builtin.package:
+        name: "{{ dmz_router_newer_tools_pkg.stdout | trim }}"
+        state: present
+
+    - name: TCX対応のbpftoolを再度探す
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: "{{ dmz_router_bpftool_probe_script }}"
+      register: dmz_router_bpftool_reprobe
+      changed_when: false
+
+    - name: 再探索で見つかったbpftoolを採用する
+      ansible.builtin.set_fact:
+        dmz_router_bpftool: "{{ dmz_router_bpftool_reprobe.stdout | trim }}"
+      when: dmz_router_bpftool_reprobe.stdout | default('') | trim | length > 0
+
+- name: TCXに対応したbpftoolが用意できたことを確認
+  ansible.builtin.assert:
+    that:
+      - dmz_router_bpftool | length > 0
+    fail_msg: >-
+      TCX(tcx_ingress/tcx_egress)に対応したbpftoolを用意できませんでした。
+      bpftool v7.5.0以上が必要です(カーネル要件6.6+とは別の要件)。
+      稼働カーネル{{ ansible_kernel }}向けのlinux-toolsしか無い場合、
+      Ubuntu 24.04系ではv7.4.0止まりでこの要件を満たしません。
+      新しいlinux-toolsを導入するか、dmz_router_bpftool にパスを明示するか、
+      dmz_router_bpftool_packages_by_os_family を環境に合わせてください。
+      候補ごとの判定:
+      {{ dmz_router_bpftool_reprobe.stderr
+         | default(dmz_router_bpftool_probe.stderr | default('(探索を実行していない)'))
+         | trim }}
+    success_msg: "bpftool: {{ dmz_router_bpftool }}"
+
+# --- 手順3 成果物(.o、attachスクリプト)の配置 ---
+# ebpf-dmz-router:docs/specs/ebpf-program.md「ビルドと配布」。
+#
+# リリースから当該バージョンの.o(ノードのアーキに対応するもの)とattach
+# スクリプトを取得して/opt/dmz-router/へ配置する。
+#
+# ebpf-dmz-router は private なので、取得には gitops_repo_token
+# (secrets.yml、k8s-manifests と共用の PAT。対象リポジトリに
+# ebpf-dmz-router を追加し、Contents: Read を与えておくこと)を
+# Authorization ヘッダで渡す。
+#
+# **ブラウザ用のダウンロードURL
+# (https://github.com/<owner>/<repo>/releases/download/<tag>/<asset>)は
+# 使えない。** あちらはWeb側のセッション(cookie)認証しか受け付けず、PATを
+# Authorizationヘッダで渡してもprivateリポジトリでは404を返す(存在の有無を
+# 漏らさないため403ではなく404になる)。認証してアセットを取るには
+# リリースAPIでアセットIDを引き、
+# https://api.github.com/repos/<owner>/<repo>/releases/assets/<id> を
+# Accept: application/octet-stream で叩く必要がある。
+#
+# そのアセットURLは objects.githubusercontent.com の署名付きURLへ302で飛ぶ。
+# Ansibleのリダイレクトハンドラは既定でリクエストヘッダをそのまま引き継ぐため、
+# 署名付きURL側が二重認証を嫌って400を返しうる。unredirected_headers に
+# Authorization を挙げると、そのヘッダは最初のリクエストにしか付かなくなる
+# (urllibのadd_unredirected_headerが使われる)ので、これで回避する。
+#
+# checksumはAPI経由で取得したSHA256SUMSから引いた実値を渡す。checksumの
+# URL形式は使えない。あれは**取得元URLのbasename**でSHA256SUMS内の行を探す
+# 仕様で、アセットURLのbasenameは数値のアセットIDになってしまい一致しない。
+#
+# checksumを渡すこと自体は必須である。get_urlのforceは既定falseで、その場合
+# 「destが存在しなければダウンロードする」動作しかせず、checksum無しでは
+# dmz_router_versionを上げて再実行しても配置済みノードで新しいアセットが
+# 取得されない(changed: falseのまま成功し、notifyした再attachハンドラも
+# 発火しない)。checksumを渡すと、既存destのチェックサムが食い違う場合は
+# forceに関わらず再ダウンロードされるため、バージョン更新への追随と成果物の
+# 完全性検証を同時に満たせる。force: trueの併用は行わない。
+
+- name: "リリース情報(アセットID)を取得: v{{ dmz_router_version }}"
+  # ノードではなくコントローラから引く。取得するのはメタデータだけで、
+  # ノードごとに変わらないため。
+  ansible.builtin.uri:
+    url: "{{ dmz_router_release_api_url }}/releases/tags/v{{ dmz_router_version }}"
+    headers:
+      Authorization: "Bearer {{ gitops_repo_token }}"
+      Accept: application/vnd.github+json
+      X-GitHub-Api-Version: "2022-11-28"
+  register: dmz_router_release
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: false
+
+- name: アセット名からアセットIDを引く表を作る
+  ansible.builtin.set_fact:
+    dmz_router_asset_ids: >-
+      {{ dict(dmz_router_release.json.assets | map(attribute='name')
+              | zip(dmz_router_release.json.assets | map(attribute='id'))) }}
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: 必要なアセットがリリースに揃っていることを確認
+  ansible.builtin.assert:
+    that:
+      - dmz_router_release_checksums_file in dmz_router_asset_ids
+      - dmz_router_script_asset in dmz_router_asset_ids
+      - dmz_router_obj_asset in dmz_router_asset_ids
+    fail_msg: >-
+      リリース v{{ dmz_router_version }} に必要なアセットがありません。
+      必要: {{ dmz_router_release_checksums_file }},
+      {{ dmz_router_script_asset }}, {{ dmz_router_obj_asset }} /
+      実際: {{ dmz_router_asset_ids.keys() | list }}
+
+- name: "チェックサム一覧を取得: {{ dmz_router_release_checksums_file }}"
+  ansible.builtin.uri:
+    url: "{{ dmz_router_release_api_url }}/releases/assets/{{ dmz_router_asset_ids[dmz_router_release_checksums_file] }}"
+    headers:
+      Authorization: "Bearer {{ gitops_repo_token }}"
+      Accept: application/octet-stream
+    unredirected_headers:
+      - Authorization
+    return_content: true
+  register: dmz_router_sha256sums
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: false
+
+# sha256sumの出力は「<hash>␣␣<name>」。バイナリモードの行は名前が'*'で始まる。
+- name: アセット名からsha256を引く表を作る
+  ansible.builtin.set_fact:
+    dmz_router_checksums: >-
+      {{ dmz_router_checksums | default({})
+         | combine({(item.split()[1] | regex_replace('^[*]', '')): item.split()[0]}) }}
+  loop: "{{ dmz_router_sha256sums.content.splitlines() | select() | list }}"
+  loop_control:
+    label: "{{ item.split()[1] | default('') }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: 配置先ディレクトリを作成
+  ansible.builtin.file:
+    path: "{{ dmz_router_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "BPFオブジェクト(拡張子.o)を取得: {{ dmz_router_obj_asset }}"
+  ansible.builtin.get_url:
+    url: "{{ dmz_router_release_api_url }}/releases/assets/{{ dmz_router_asset_ids[dmz_router_obj_asset] }}"
+    dest: "{{ dmz_router_bpf_obj_path }}"
+    checksum: "sha256:{{ dmz_router_checksums[dmz_router_obj_asset] }}"
+    headers:
+      Authorization: "Bearer {{ gitops_repo_token }}"
+      Accept: application/octet-stream
+    unredirected_headers:
+      - Authorization
+    owner: root
+    group: root
+    mode: "0644"
+  notify: 再attachする(dmz-router.service)
+
+- name: "スクリプトを取得: {{ dmz_router_script_asset }}"
+  ansible.builtin.get_url:
+    url: "{{ dmz_router_release_api_url }}/releases/assets/{{ dmz_router_asset_ids[dmz_router_script_asset] }}"
+    dest: "{{ dmz_router_script_path }}"
+    checksum: "sha256:{{ dmz_router_checksums[dmz_router_script_asset] }}"
+    headers:
+      Authorization: "Bearer {{ gitops_repo_token }}"
+      Accept: application/octet-stream
+    unredirected_headers:
+      - Authorization
+    owner: root
+    group: root
+    mode: "0755"
+  notify: 再attachする(dmz-router.service)
+
+# --- 手順4 設定ファイルの生成 ---
+# ebpf-dmz-router:docs/specs/ebpf-program.md「設定項目(attachスクリプト)」。
+
+- name: "環境ファイルを生成: {{ dmz_router_env_file }}"
+  ansible.builtin.template:
+    src: dmz-router.env.j2
+    dest: "{{ dmz_router_env_file }}"
+    owner: root
+    group: root
+    mode: "0640"
+  notify: 再attachする(dmz-router.service)
+
+# --- 手順5 systemdユニットの導入 ---
+# ebpf-dmz-router:docs/specs/ebpf-program.md「boot時の再attach (systemd)」。
+
+- name: "ユニットファイルを配置: {{ dmz_router_systemd_unit_name }}"
+  ansible.builtin.template:
+    src: dmz-router.service.j2
+    dest: "/etc/systemd/system/{{ dmz_router_systemd_unit_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: デーモン設定をreloadする
+
+# ユニットファイルの変更をenable/start前に反映させるため、ここでハンドラを
+# 即時実行する(handlerは通常このロール/プレイの末尾でしか flush されないため)。
+- name: 保留中のハンドラ(デーモン設定のreload)を実行
+  ansible.builtin.meta: flush_handlers
+
+- name: "ユニットをenable/start: {{ dmz_router_systemd_unit_name }}"
+  ansible.builtin.systemd_service:
+    name: "{{ dmz_router_systemd_unit_name }}"
+    enabled: true
+    state: started

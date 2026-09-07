@@ -36,4 +36,17 @@ gitops_repo_branch: "main"
 ghcr_username: "sota2501"
 ghcr_pull_secret_name: "ghcr-pull-secret"
 ghcr_pull_secret_namespaces:
+  - ebpf-dmz-router
   - unbound
+
+# --- ebpf-dmz-router (playbooks/03-dmz-router.yml) ---
+# 単一のDMZ IPの背後に複数のサービスをポート単位で公開する eBPF/TCX ルーター。
+# ロール本体は roles/dmz_router。設計と仕様は別リポジトリ ebpf-dmz-router の
+# docs/specs/ebpf-program.md「ノードへの導入」にあり、このロールはその実装。
+#
+# dmz_router_version: 取得するリリースのバージョン(vを含まない)。
+#   ebpf-dmz-router の Chart.yaml の version/appVersion、および
+#   k8s-manifests の kustomization.yaml の version と揃えること。
+#   BPFオブジェクト(Ansible配布)とcontroller(Helm配布)は別経路で配られるため、
+#   ずれると abi_version_map の照合で controller が起動に失敗する。
+dmz_router_version: "0.1.0"

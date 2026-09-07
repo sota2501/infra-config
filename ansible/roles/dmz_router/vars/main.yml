@@ -1,0 +1,35 @@
+---
+# ロール内部の定数。利用者が上書きする想定のものは defaults/main.yml に置く。
+
+# TCX(tcx_ingress)に対応したbpftoolを探すスクリプト。
+# 手順2で2回(linux-tools追加導入の前後で)使うため、ここに1つだけ持つ。
+#
+# **必ず終了コード0で終わる。** 見つかったパスをstdoutへ、候補ごとの判定結果を
+# stderrへ出す。「見つからなかった」をrcで表さないのは、rcだとモジュール自体が
+# 失敗した場合(MODULE FAILUREはrcを持つ一方でstdoutを持たない)と区別できず、
+# failed_when: false と併せると呼び出し側が未定義エラーで落ちるため。
+# 呼び出し側はstdoutが空かどうかだけを見る。
+#
+# bpftoolの判定にパイプを使わないこと。pipefail下ではbpftool自身の終了コードに
+# 引きずられ、grepが一致していても非0になりうる。
+dmz_router_bpftool_probe_script: |
+  set -uo pipefail
+  found=""
+  for c in bpftool $(ls -1d /usr/lib/linux-tools/*/bpftool 2>/dev/null | sort -Vr); do
+    if ! command -v "$c" >/dev/null 2>&1 && [ ! -x "$c" ]; then
+      echo "SKIP $c (実行できない)" >&2
+      continue
+    fi
+    ver=$("$c" version 2>&1 | head -1 || true)
+    out=$("$c" net help 2>&1 || true)
+    case "$out" in
+      *tcx_ingress*)
+        echo "OK   $c [$ver]" >&2
+        [ -n "$found" ] || found="$c"
+        ;;
+      *)
+        echo "NG   $c [$ver] tcx_ingress非対応" >&2
+        ;;
+    esac
+  done
+  echo "$found"

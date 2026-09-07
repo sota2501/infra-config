@@ -4,8 +4,8 @@ Terraform で作成した VM に対して、OS セットアップ・kubeadm に�
 ArgoCD のインストールまでを行う。
 
 GitOpsで実際に同期されるマニフェスト本体は別リポジトリ([k8s-manifests](https://github.com/sota2501/k8s-manifests))
-にある。`argocd_bootstrap`ロールは`group_vars/all.yml`の`gitops_repo`/`gitops_repo_branch`を使って
-そのリポジトリの`apps/root-app.yaml`を直接取得・applyする(このリポジトリからは読まない)。
+にある。`argocd_bootstrap`ロールは`group_vars/all/vars.yml`の`gitops_repo`/`gitops_repo_branch`を
+使ってそのリポジトリの`apps/root-app.yaml`を直接取得・applyする(このリポジトリからは読まない)。
 
 ## 前提
 
@@ -16,6 +16,13 @@ GitOpsで実際に同期されるマニフェスト本体は別リポジトリ([
 
   ```sh
   ansible-galaxy collection install -r requirements.yml
+  ```
+
+- private リポジトリ・レジストリ用の PAT を用意済みであること
+
+  ```sh
+  cp inventory/home/group_vars/all/secrets.yml.example inventory/home/group_vars/all/secrets.yml
+  # gitops_repo_token と ghcr_pull_token を実際の値に書き換える
   ```
 
 ## 使い方(想定)
@@ -34,15 +41,19 @@ ansible-playbook playbooks/01-prereqs.yml
 ## 構成
 
 ```
-inventory/home/hosts.yml        control_plane / workers のホスト一覧
-inventory/home/group_vars/all.yml  k8sバージョン, Pod CIDR 等の共通変数
+ansible.cfg                      inventory / roles_path / become の既定
+requirements.yml                 必要な Galaxy コレクション
+inventory/home/hosts.yml         control_plane / workers のホスト一覧
+inventory/home/group_vars/all/vars.yml     k8sバージョン, Pod CIDR 等の共通変数
+inventory/home/group_vars/all/secrets.yml  PAT 等(git 管理外。.example をコピーして作る)
 playbooks/01-prereqs.yml         OS共通設定・containerd・kubernetesパッケージ
 playbooks/02-zfs-vm-storage.yml  worker内ZFSストレージ・PVCバックアップの構築
-playbooks/03-kubeadm-init.yml    control-plane 初期化
-playbooks/04-kubeadm-join.yml    worker の join
-playbooks/05-cni.yml             Calico インストール
-playbooks/06-argocd-bootstrap.yml  ArgoCD インストール + root Application apply
-playbooks/07-image-pull-secrets.yml  private レジストリ用 imagePullSecrets 登録
+playbooks/03-dmz-router.yml     ebpf-dmz-router(eBPF/TCX)のノード導入
+playbooks/04-kubeadm-init.yml    control-plane 初期化
+playbooks/05-kubeadm-join.yml    worker の join
+playbooks/06-cni.yml             Calico インストール
+playbooks/07-argocd-bootstrap.yml  ArgoCD インストール + root Application apply
+playbooks/08-image-pull-secrets.yml  private レジストリ用 imagePullSecrets 登録
 roles/                            各ステップの実タスク
 ```
 
@@ -101,20 +112,64 @@ chmod 600 /home/zfsbackup/.ssh/authorized_keys
 zfs allow -u zfsbackup create,receive,mount,destroy,snapshot zpool_backup/iris-node-1
 ```
 
-## eBPFプログラム用のカーネル設定(roles/common)
+## ebpf-dmz-router(playbooks/03-dmz-router.yml)
 
-k8s-manifests側の`infrastructure/ebpf-dnat-router`(TC ingress eBPFプログラム、DMZ用
-外部公開IPのDNAT処理)が、Podが`privileged: true`かつ全capability保持であっても
-`Prog section 'tc' rejected: Permission denied (13)!`でロードに失敗する事象が発生した。
+単一の DMZ IP の背後に複数のサービスをポート単位で公開する eBPF(TCX)ルーターを
+ノードへ導入する(`roles/dmz_router`)。設計と仕様は
+[ebpf-dmz-router](https://github.com/sota2501/ebpf-dmz-router) リポジトリの
+`docs/` にあり、**このロールはその「ノードへの導入」手順を実装したもの**である。
+仕様を変更したときは両方を合わせること。
 
-原因は`kernel.unprivileged_bpf_disabled`が`2`(Ubuntuのデフォルトでこの値になって
-いることが多い)になっていたこと。`roles/common`(`playbooks/01-prereqs.yml`経由、
-`k8s_cluster`グループ=全ノード対象)でこれを`0`に設定するタスクを追加した。
+**kubeadm より前(02 と 04 の間)に置いている。** 導入する systemd ユニットは
+`Before=kubelet.service` を持ち、kubelet より先に attach して bpffs 上に pin を
+作る。クラスタ側の DaemonSet はその pin を hostPath でマウントするため、pin が
+無いと Pod が `ContainerCreating` のまま停滞する。先にノード側を成立させて
+おけば、この順序依存を気にせずに済む。
 
-**重要**: `kernel.unprivileged_bpf_disabled`は"write once"な特殊なsysctlで、既に`2`に
-なっているノードでは`sysctl`コマンドによる動的反映(`reload: true`)が効かない。
-`ansible-playbook playbooks/01-prereqs.yml`を実行しても、**対象ノードを再起動しない
-限り値は変わらない**。適用後は忘れずに対象ノードを再起動すること。
+**前提として ebpf-dmz-router のリリースが公開されている必要がある。**
+ロールは BPF オブジェクトと attach スクリプトを GitHub Release から
+(`SHA256SUMS` で検証しながら)取得するため、タグが未発行だと失敗する。
+リポジトリが private の間は `secrets.yml` の `gitops_repo_token` が必須で、
+未設定だと取得が 404 になる。k8s-manifests と同じ PAT を使うので、**PAT の
+対象リポジトリに ebpf-dmz-router を追加し、`Contents: Read` を与えておくこと**。
+fine-grained PAT はリポジトリを選ぶだけでは足りず、権限も個別に必要になる。
+権限不足のときも(存在を漏らさないため)403 ではなく 404 が返る。
+
+取得は GitHub REST API のアセットエンドポイント経由で行う。ブラウザ用の
+`https://github.com/<owner>/<repo>/releases/download/...` は private
+リポジトリでは PAT を受け付けず、常に 404 になるため使えない。切り分けは
+以下で行う(いずれも 200 が返れば正常)。
+
+```sh
+T=<PAT>
+# 1. PAT がリポジトリを見えているか(404 ならリポジトリ未追加か権限不足)
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $T" \
+  https://api.github.com/repos/sota2501/ebpf-dmz-router
+# 2. 当該リリースが見えているか(アセット ID もここで確認できる)
+curl -s -H "Authorization: Bearer $T" \
+  https://api.github.com/repos/sota2501/ebpf-dmz-router/releases/tags/v0.1.0 \
+  | grep -E '"(name|id)"'
+```
+
+クラスタ側(controller の DaemonSet、`dmz-anchor` Service)は k8s-manifests から
+ArgoCD 経由で入る。`dmz_router_version` は k8s-manifests の
+`kustomization.yaml` の `version` と揃えること。
+
+## `kernel.unprivileged_bpf_disabled`(roles/common)
+
+`roles/common`(`playbooks/01-prereqs.yml`経由、`k8s_cluster`=全ノード対象)が
+これを`0`に設定している。**旧設計の名残であり、現在は不要な可能性が高い。**
+
+eBPFプログラムを`privileged: true`のPodからロードしていた頃、Ubuntu既定の`2`が
+原因で`Prog section 'tc' rejected: Permission denied (13)!`となる事象があり、
+その対処として入れたもの。現在の ebpf-dmz-router は attach をノード上の
+systemd(root)が行い、controller は`CAP_BPF`を持つ非rootで動くため、`2`
+(非特権からの`bpf()`のみ拒否、`CAP_BPF`は通る)で足りるはずである。`0`は
+ノード上の任意の非特権プロセスに`bpf()`を開放するので、検証のうえ外したい。
+
+**"write once"な特殊なsysctlである。** 既に`2`になっているノードでは
+`sysctl`の動的反映(`reload: true`)が効かず、値を変えるには対象ノードの
+再起動が要る。
 
 ## 現状
 

@@ -1,0 +1,112 @@
+---
+# dmz_router ロールの既定値。
+#
+# 必須変数(dmz_router_version)は既定値を持たせず、tasks/main.yml の冒頭で
+# assertして未指定を弾く。
+#
+# DMZ IPはこのロールの管轄外である。controllerがdmz-anchorアノテーションの
+# 付いたServiceから読むため、ノード側にクラスタ固有の値は1つも無い
+# (ebpf-dmz-router:docs/specs/deployment.md「DMZ IPの供給元」)。
+
+# --- 必須変数(ここには書かない。呼び出し側で必ず指定すること) ---
+# dmz_router_version: 取得するリリースのバージョン(vを含まない。例: "0.1.0")。
+#   Helmチャートのversion/image.controller.tagと同じ値にすること
+#   (ebpf-dmz-router:docs/specs/ebpf-program.md「abi_version_map(ABIの照合)」)。
+
+# --- リリース成果物の取得元 ---
+dmz_router_release_owner: sota2501
+dmz_router_release_repo: ebpf-dmz-router
+# GitHub REST APIのリポジトリベースURL。ミラーする場合に上書きする。
+# ブラウザ用の https://github.com/<owner>/<repo>/releases/download/ ではない
+# ことに注意(privateリポジトリではPATを渡しても404になる。理由は
+# tasks/main.ymlの手順3の説明)。
+dmz_router_release_api_url: "https://api.github.com/repos/{{ dmz_router_release_owner }}/{{ dmz_router_release_repo }}"
+# リリースがsha256sum形式で公開するチェックサム一覧のアセット名
+# (.github/workflows/release.yamlのbpfジョブが生成する)。
+dmz_router_release_checksums_file: SHA256SUMS
+# 取得するアセット名。SHA256SUMS内の名前とも一致していなければならない。
+# dmz_router_release_archはtasks/main.ymlがansible_architectureから決める。
+dmz_router_obj_asset: "dmz_router-{{ dmz_router_release_arch }}.o"
+dmz_router_script_asset: dmz-router.sh
+# ノードのCPUアーキテクチャ(ansible_architecture)からリリースアセット名の
+# サフィックスへのマッピング。TCX(kernel 6.6+)を前提にしているため
+# 対象はamd64/arm64のみ。
+dmz_router_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+
+# --- 前提条件の確認(ebpf-dmz-router:docs/specs/ebpf-program.md「ノードへの導入」手順1) ---
+dmz_router_min_kernel_version: "6.6"
+dmz_router_bpffs_path: /sys/fs/bpf
+
+# --- パッケージ導入(手順2) ---
+# ディストリビューションのパッケージからbpftool/iproute2を入れる。TCXに
+# 対応したbpftoolが必要(カーネル6.6+を満たす比較的新しいディストリを前提)。
+#
+# Debian/Ubuntuでは"bpftool"という名前の実パッケージが無く、
+# linux-tools-common(bpftool本体)+ linux-tools-<稼働中のカーネル>
+# (linux-tools-commonが呼び出すバージョン別の実体)という組み合わせでのみ
+# 提供される。動作確認で実際に踏んだ問題であり、単純に"bpftool"を指定すると
+# 「仮想パッケージなのでインストールできない」エラーになる。
+#
+# linux-tools-<ansible_kernel>は、稼働中のカーネルがディストリの標準パッケージ
+# (linux-image-*)由来である前提に依存する。クラウド専用カーネル
+# (linux-tools-awsやlinux-tools-gcp等)やカスタムビルドのカーネルでは
+# 対応するlinux-tools-*パッケージが存在せず失敗しうる。その場合はこの変数を
+# 環境に合わせて明示的に上書きすること
+# (例: ["linux-tools-common", "linux-tools-generic", "iproute2"])。
+#
+# RedHat系はbpftoolが独立パッケージとして提供されるため素直にbpftoolを使う。
+# それ以外のos_familyはbpftoolへのフォールバックとする(要検証)。
+# **重要**: bpftoolはv7.5.0以上でなければならない。`bpftool net attach`が
+# tcx_ingress/tcx_egressを解釈できるようになったのがv7.5.0からで、v7.4.0では
+# 「Error: invalid net attach/detach type: tcx_ingress」で失敗する。これは
+# カーネル要件(6.6+)とは独立した別要件である。
+#
+# Ubuntu 24.04の既定カーネルは6.8系で、linux-tools-6.8.*のbpftoolはv7.4.0に
+# とどまるため**この既定値では要件を満たさない**。起動中のカーネルより新しい
+# linux-toolsを追加で入れ、dmz_router_bpftoolでそのパスを指すこと。新しい
+# linux-toolsはユーザ空間のツールだけを/usr/lib/linux-tools/<version>/へ置き、
+# カーネルイメージは引き込まない(実測で確認)。
+#
+#   dmz_router_bpftool_packages_by_os_family:
+#     Debian:
+#       - linux-tools-common
+#       - linux-tools-6.17.0-42-generic
+#   dmz_router_bpftool: /usr/lib/linux-tools/6.17.0-42-generic/bpftool
+dmz_router_bpftool_packages_by_os_family:
+  Debian:
+    - linux-tools-common
+    - "linux-tools-{{ ansible_kernel }}"
+  RedHat:
+    - bpftool
+dmz_router_packages: >-
+  {{ (dmz_router_bpftool_packages_by_os_family[ansible_facts['os_family']] | default(['bpftool']))
+  + ['iproute2'] }}
+
+# --- 成果物の配置(手順3) ---
+dmz_router_install_dir: /opt/dmz-router
+dmz_router_bpf_obj_path: "{{ dmz_router_install_dir }}/dmz_router.o"
+dmz_router_script_path: "{{ dmz_router_install_dir }}/dmz-router.sh"
+
+# --- 設定ファイル(手順4) ---
+dmz_router_env_file: /etc/default/dmz-router
+# attach/detachスクリプトのpin先。charts側のpinPath(既定
+# /sys/fs/bpf/dmz_router)と一致させること(ebpf-dmz-router:docs/specs/deployment.md「values」)。
+dmz_router_pin_path: /sys/fs/bpf/dmz_router
+# ピンの所有グループ(GID)。bpftool prog loadallが作るピンは既定で
+# 0600 root:rootになり、非rootで動くcontrollerが開けないため、attachスクリプトが
+# このグループへchgrpし、モードを調整する(ebpf-dmz-router:docs/specs/ebpf-program.md
+# 「ピンの所有グループとモード」)。既定は65534(nobodyグループ)で、
+# チャートの securityContext.runAsGroup と一致させること。ノードを他用途と
+# 共用し専用GIDを割り当てたい場合はここを上書きするが、**k8s-manifests 側の
+# values も同じ値に変えないと controller がピンを開けず起動に失敗する。**
+dmz_router_pin_gid: 65534
+# attachスクリプトが使うbpftoolのパス。
+# **空にしておくとロールが自動で探す**(PATH上 → /usr/lib/linux-tools/*/bpftool の
+# 新しい順)。見つからなければ、より新しいlinux-toolsを導入して再探索する。
+# 明示的にパスを指定したい場合だけ設定する。
+dmz_router_bpftool: ""
+
+# --- systemdユニット(手順5) ---
+dmz_router_systemd_unit_name: dmz-router.service

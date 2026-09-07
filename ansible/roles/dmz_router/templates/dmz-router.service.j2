@@ -1,0 +1,17 @@
+{{ ansible_managed | comment }}
+# ebpf-dmz-router:docs/specs/ebpf-program.md「boot時の再attach (systemd)」。
+[Unit]
+Description=dmz-router eBPF attach
+After=network-online.target sys-fs-bpf.mount
+Wants=network-online.target
+Before=kubelet.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile={{ dmz_router_env_file }}
+ExecStart={{ dmz_router_script_path }}
+ExecStop=/usr/bin/env MODE=detach {{ dmz_router_script_path }}
+
+[Install]
+WantedBy=multi-user.target

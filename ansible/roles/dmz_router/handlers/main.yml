@@ -1,0 +1,16 @@
+---
+- name: デーモン設定をreloadする
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+# BPFオブジェクト・attachスクリプト・環境ファイルが変わったとき、
+# サービスを再起動して新しい内容で再attachする。dmz-router.shはMODE=detachで
+# 安全に停止し、attachで作り直せる設計になっている
+# (ebpf-dmz-router:docs/specs/ebpf-program.md「attachスクリプトの処理」)。
+#
+# 初回導入時もこのハンドラが発火し、tasks/systemd.ymlでの初回起動の直後に
+# もう一度restartがかかるが、スクリプトの冪等性により無害である。
+- name: 再attachする(dmz-router.service)
+  ansible.builtin.systemd_service:
+    name: "{{ dmz_router_systemd_unit_name }}"
+    state: restarted

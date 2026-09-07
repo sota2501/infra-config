@@ -11,13 +11,15 @@ GitOpsで同期されるKubernetesマニフェスト本体は
 ## 全体の流れ
 
 1. **`terraform/`** — Proxmox API 経由で control-plane / worker VM を作成する
-2. **`ansible/`** — 作成した VM に OS 設定・containerd・kubeadm クラスタ・CNI をセットアップし、
+2. **`ansible/`** — 作成した VM に OS 設定・containerd・ZFS ストレージ・
+   ebpf-dmz-router のノード導入・kubeadm クラスタ・CNI をセットアップし、
    最後に ArgoCD をインストールして [k8s-manifests](https://github.com/sota2501/k8s-manifests) の
    `apps/root-app.yaml` を apply する(以降はGitOpsに引き継がれ、このリポジトリでの作業は不要になる)
 
 ```
-terraform/   Proxmox VM プロビジョニング(control-plane / worker)
-ansible/      OSセットアップ・kubeadmクラスタ構築・ArgoCD bootstrap
+terraform/       Proxmox VM プロビジョニング(control-plane / worker)
+ansible/         OSセットアップ・kubeadmクラスタ構築・ArgoCD bootstrap
+template-vm.sh   cloud-init 対応 VM テンプレートの作成(fox 上で手動実行)
 ```
 
 ## 使い方(想定)
@@ -38,10 +40,11 @@ cd ../ansible
 # requirements.yml に列挙された Galaxy コレクション(IPとは無関係)をインストール
 ansible-galaxy collection install -r requirements.yml
 
-# k8s-manifests は private リポジトリのため、読み取り用 GitHub PAT を
-# group_vars/all/secrets.yml (git 管理外) に設定する
+# private リポジトリ・レジストリ用の PAT を group_vars/all/secrets.yml
+# (git 管理外) に設定する
 cp inventory/home/group_vars/all/secrets.yml.example inventory/home/group_vars/all/secrets.yml
-# secrets.yml の gitops_repo_token を実際の PAT に書き換える
+# gitops_repo_token: k8s-manifests と ebpf-dmz-router の Contents read-only(fine-grained)
+# ghcr_pull_token:   ghcr.io の private イメージ用(Packages read-only)
 
 ansible-playbook playbooks/site.yml
 ```
@@ -58,7 +61,7 @@ CLI引数だけで`roles_path`を上書きする手段もansible-core自体に�
 
 **実際の正しさはCLIで判断すること**:
 ```sh
-cd ansible && ansible-lint   # production profile 全通過が正
+cd ansible && ansible-lint
 ```
 Problemsパネルの`role not found`等はこの既知の制限による誤検知の可能性が高い。
 
@@ -174,5 +177,5 @@ iSCSIターゲット公開→ノードでext4フォーマット・マウント�
 
 ## 現状
 
-雛形のみ。VMテンプレート作成手順(cloud-init対応、Packer化など)や、実Proxmox環境での
-動作確認はこれから。
+単一 control-plane + 1 worker の構成で稼働中。ArgoCD が k8s-manifests を
+同期している。

@@ -8,17 +8,20 @@
 - name: 02 - k8s VM内ZFSストレージ・PVCバックアップの構築
   ansible.builtin.import_playbook: 02-zfs-vm-storage.yml
 
-- name: 03 - kubeadm init(control-plane)
-  ansible.builtin.import_playbook: 03-kubeadm-init.yml
+- name: 03 - ebpf-dmz-router(eBPF/TCX)のノード導入
+  ansible.builtin.import_playbook: 03-dmz-router.yml
 
-- name: 04 - kubeadm join(workers)
-  ansible.builtin.import_playbook: 04-kubeadm-join.yml
+- name: 04 - kubeadm init(control-plane)
+  ansible.builtin.import_playbook: 04-kubeadm-init.yml
 
-- name: 05 - CNI(Calico)インストール
-  ansible.builtin.import_playbook: 05-cni.yml
+- name: 05 - kubeadm join(workers)
+  ansible.builtin.import_playbook: 05-kubeadm-join.yml
 
-- name: 06 - ArgoCD bootstrap
-  ansible.builtin.import_playbook: 06-argocd-bootstrap.yml
+- name: 06 - CNI(Calico)インストール
+  ansible.builtin.import_playbook: 06-cni.yml
 
-- name: 07 - private レジストリ用 imagePullSecrets 登録
-  ansible.builtin.import_playbook: 07-image-pull-secrets.yml
+- name: 07 - ArgoCD bootstrap
+  ansible.builtin.import_playbook: 07-argocd-bootstrap.yml
+
+- name: 08 - private レジストリ用 imagePullSecrets 登録
+  ansible.builtin.import_playbook: 08-image-pull-secrets.yml
